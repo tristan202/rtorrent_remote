@@ -1,0 +1,8 @@
+*.exe
+*.dll
+*.so
+*.app
+*.out
+*.bak
+*~
+PureBasic.prefs
