@@ -6,3 +6,6 @@
 *.bak
 *~
 PureBasic.prefs
+# Byggeoutput (build.cmd / installer.iss)
+build/
+dist/

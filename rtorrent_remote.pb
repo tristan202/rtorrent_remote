@@ -1920,5 +1920,5 @@ End
 ; UseIcon = rtorrent_remote.ico
 ; Executable = rtorrent_remote.exe
 ; IncludeVersionInfo
-; VersionField0 = 0.1
-; VersionField1 = 0.1
+; VersionField0 = 1.0.0.0
+; VersionField1 = 1.0
