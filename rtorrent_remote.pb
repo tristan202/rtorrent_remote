@@ -58,7 +58,9 @@ Enumeration 1
   #G_Files
   ; server-dialog
   #G_SrvList
+  #G_SrvType
   #G_SrvName
+  #G_SrvUrlLbl
   #G_SrvUrl
   #G_SrvUser
   #G_SrvPass
@@ -779,34 +781,47 @@ Procedure ApplyServer()
   gRefresh = 1
 EndProcedure
 
+; Viser den valgte servers felter i serverdialogen
+Procedure ShowServerFields()
+  SetGadgetState(#G_SrvType, Servers()\type)
+  SetGadgetText(#G_SrvUrlLbl, Backend_UrlHint(Servers()\type))
+  SetGadgetText(#G_SrvName, Servers()\name) : SetGadgetText(#G_SrvUrl, Servers()\url)
+  SetGadgetText(#G_SrvUser, Servers()\user) : SetGadgetText(#G_SrvPass, Servers()\pass)
+  SetGadgetState(#G_SrvNoSSL, Servers()\noSSL)
+EndProcedure
+
 Procedure ServerDialog()
-  Protected ev.i, quit.i, sel.i, url.s
+  Protected ev.i, quit.i, sel.i, url.s, type.i, i.i
 
   DisableWindow(#Win, #True)
-  If OpenWindow(#WinSrv, 0, 0, 650, 300, "Servere", #PB_Window_SystemMenu | #PB_Window_WindowCentered, WindowID(#Win))
+  If OpenWindow(#WinSrv, 0, 0, 650, 350, "Servere", #PB_Window_SystemMenu | #PB_Window_WindowCentered, WindowID(#Win))
     ApplyIcon(WindowID(#WinSrv))
-    ListViewGadget(#G_SrvList, 10, 10, 190, 280)
-    TextGadget(#PB_Any, 215, 12, 200, 18, "Navn:")
-    StringGadget(#G_SrvName, 215, 30, 420, 24, "")
-    TextGadget(#PB_Any, 215, 60, 420, 18, "URL (f.eks. https://bruger.server.usbx.me/RPC2):")
-    StringGadget(#G_SrvUrl, 215, 78, 420, 24, "")
-    TextGadget(#PB_Any, 215, 108, 200, 18, "Brugernavn:")
-    StringGadget(#G_SrvUser, 215, 126, 420, 24, "")
-    TextGadget(#PB_Any, 215, 156, 200, 18, "Adgangskode:")
-    StringGadget(#G_SrvPass, 215, 174, 420, 24, "", #PB_String_Password)
-    CheckBoxGadget(#G_SrvNoSSL, 215, 206, 420, 22, "Ignorer SSL-certifikatfejl")
-    ButtonGadget(#G_SrvNew,   215, 250, 95, 28, "Ny")
-    ButtonGadget(#G_SrvSave,  318, 250, 95, 28, "Gem")
-    ButtonGadget(#G_SrvDel,   421, 250, 95, 28, "Slet")
-    ButtonGadget(#G_SrvClose, 540, 250, 95, 28, "Luk")
+    ListViewGadget(#G_SrvList, 10, 10, 190, 330)
+    TextGadget(#PB_Any, 215, 12, 200, 18, "Klient:")
+    ComboBoxGadget(#G_SrvType, 215, 30, 420, 24)
+    For i = 0 To #BT_Count - 1
+      AddGadgetItem(#G_SrvType, -1, Backend_TypeName(i))
+    Next
+    SetGadgetState(#G_SrvType, #BT_RTorrent)
+    TextGadget(#PB_Any, 215, 62, 200, 18, "Navn:")
+    StringGadget(#G_SrvName, 215, 80, 420, 24, "")
+    TextGadget(#G_SrvUrlLbl, 215, 110, 420, 18, Backend_UrlHint(#BT_RTorrent))
+    StringGadget(#G_SrvUrl, 215, 128, 420, 24, "")
+    TextGadget(#PB_Any, 215, 158, 200, 18, "Brugernavn:")
+    StringGadget(#G_SrvUser, 215, 176, 420, 24, "")
+    TextGadget(#PB_Any, 215, 206, 200, 18, "Adgangskode:")
+    StringGadget(#G_SrvPass, 215, 224, 420, 24, "", #PB_String_Password)
+    CheckBoxGadget(#G_SrvNoSSL, 215, 256, 420, 22, "Ignorer SSL-certifikatfejl")
+    ButtonGadget(#G_SrvNew,   215, 300, 95, 28, "Ny")
+    ButtonGadget(#G_SrvSave,  318, 300, 95, 28, "Gem")
+    ButtonGadget(#G_SrvDel,   421, 300, 95, 28, "Slet")
+    ButtonGadget(#G_SrvClose, 540, 300, 95, 28, "Luk")
 
     ForEach Servers() : AddGadgetItem(#G_SrvList, -1, Servers()\name) : Next
     If CurServer >= 0
       SetGadgetState(#G_SrvList, CurServer)
       SelectElement(Servers(), CurServer)
-      SetGadgetText(#G_SrvName, Servers()\name) : SetGadgetText(#G_SrvUrl, Servers()\url)
-      SetGadgetText(#G_SrvUser, Servers()\user) : SetGadgetText(#G_SrvPass, Servers()\pass)
-      SetGadgetState(#G_SrvNoSSL, Servers()\noSSL)
+      ShowServerFields()
     EndIf
 
     Repeat
@@ -819,18 +834,22 @@ Procedure ServerDialog()
             Case #G_SrvList
               sel = GetGadgetState(#G_SrvList)
               If sel >= 0 And SelectElement(Servers(), sel)
-                SetGadgetText(#G_SrvName, Servers()\name) : SetGadgetText(#G_SrvUrl, Servers()\url)
-                SetGadgetText(#G_SrvUser, Servers()\user) : SetGadgetText(#G_SrvPass, Servers()\pass)
-                SetGadgetState(#G_SrvNoSSL, Servers()\noSSL)
+                ShowServerFields()
               EndIf
+            Case #G_SrvType
+              type = GetGadgetState(#G_SrvType)
+              If type >= 0 : SetGadgetText(#G_SrvUrlLbl, Backend_UrlHint(type)) : EndIf
             Case #G_SrvNew
               SetGadgetState(#G_SrvList, -1)
+              SetGadgetState(#G_SrvType, #BT_RTorrent)
+              SetGadgetText(#G_SrvUrlLbl, Backend_UrlHint(#BT_RTorrent))
               SetGadgetText(#G_SrvName, "") : SetGadgetText(#G_SrvUrl, "https://")
               SetGadgetText(#G_SrvUser, "") : SetGadgetText(#G_SrvPass, "")
               SetGadgetState(#G_SrvNoSSL, 0)
             Case #G_SrvSave
-              ; indtil serverdialogen faar et valg af klienttype, er alle servere rTorrent
-              url = Backend_NormalizeUrl(#BT_RTorrent, GetGadgetText(#G_SrvUrl))
+              type = GetGadgetState(#G_SrvType)
+              If type < 0 : type = #BT_RTorrent : EndIf
+              url = Backend_NormalizeUrl(type, GetGadgetText(#G_SrvUrl))
               If Trim(GetGadgetText(#G_SrvName)) = "" Or url = ""
                 MessageRequester(#APP_NAME, "Udfyld mindst navn og URL.", #PB_MessageRequester_Warning)
               Else
@@ -843,7 +862,7 @@ Procedure ServerDialog()
                   sel = ListIndex(Servers())
                 EndIf
                 Servers()\name  = Trim(GetGadgetText(#G_SrvName))
-                Servers()\type  = #BT_RTorrent
+                Servers()\type  = type
                 Servers()\url   = url
                 Servers()\user  = GetGadgetText(#G_SrvUser)
                 Servers()\pass  = GetGadgetText(#G_SrvPass)
