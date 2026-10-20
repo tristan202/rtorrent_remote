@@ -1495,6 +1495,94 @@ Procedure OnDrop()
 EndProcedure
 
 ;------------------------------------------------------------------------------
+; Ikoner til vaerktoejslinjen (tegnes som vektorgrafik i et 24x24-gitter)
+;------------------------------------------------------------------------------
+Enumeration
+  #Ico_AddFile
+  #Ico_AddMagnet
+  #Ico_Start
+  #Ico_Stop
+  #Ico_Remove
+  #Ico_Servers
+EndEnumeration
+
+Procedure PathRoundBox(x.d, y.d, w.d, h.d, r.d)
+  MovePathCursor(x + r, y)
+  AddPathArc(x + w, y, x + w, y + h, r)
+  AddPathArc(x + w, y + h, x, y + h, r)
+  AddPathArc(x, y + h, x, y, r)
+  AddPathArc(x, y, x + w, y, r)
+  ClosePath()
+EndProcedure
+
+Procedure.i MakeIcon(kind.i)
+  Protected sz.i = Round(20 * DesktopResolutionX(), #PB_Round_Nearest)
+  Protected img.i = CreateImage(#PB_Any, sz, sz, 32, #PB_Image_Transparent)
+  If img = 0 : ProcedureReturn 0 : EndIf
+  If StartVectorDrawing(ImageVectorOutput(img))
+    ScaleCoordinates(sz / 24.0, sz / 24.0)
+    Select kind
+      Case #Ico_AddFile
+        ; dokument med foldet hjoerne + groent plus
+        MovePathCursor(4, 2) : AddPathLine(13, 2) : AddPathLine(18, 7) : AddPathLine(18, 22) : AddPathLine(4, 22) : ClosePath()
+        VectorSourceColor(RGBA(255, 255, 255, 255)) : FillPath(#PB_Path_Preserve)
+        VectorSourceColor(RGBA(90, 100, 112, 255)) : StrokePath(1.5, #PB_Path_RoundCorner)
+        MovePathCursor(13, 2) : AddPathLine(13, 7) : AddPathLine(18, 7)
+        StrokePath(1.5, #PB_Path_RoundCorner)
+        AddPathCircle(17, 17, 6)
+        VectorSourceColor(RGBA(46, 158, 71, 255)) : FillPath()
+        MovePathCursor(17, 13.5) : AddPathLine(17, 20.5)
+        MovePathCursor(13.5, 17) : AddPathLine(20.5, 17)
+        VectorSourceColor(RGBA(255, 255, 255, 255)) : StrokePath(2)
+      Case #Ico_AddMagnet
+        ; hesteskomagnet
+        MovePathCursor(6, 3) : AddPathArc(6, 20, 18, 20, 6) : AddPathArc(18, 20, 18, 3, 6) : AddPathLine(18, 3)
+        VectorSourceColor(RGBA(214, 69, 65, 255)) : StrokePath(5)
+        MovePathCursor(6, 2) : AddPathLine(6, 7)
+        MovePathCursor(18, 2) : AddPathLine(18, 7)
+        VectorSourceColor(RGBA(150, 160, 170, 255)) : StrokePath(5)
+      Case #Ico_Start
+        MovePathCursor(7, 4) : AddPathLine(20, 12) : AddPathLine(7, 20) : ClosePath()
+        VectorSourceColor(RGBA(46, 158, 71, 255))
+        FillPath(#PB_Path_Preserve) : StrokePath(2, #PB_Path_RoundCorner)
+      Case #Ico_Stop
+        PathRoundBox(5, 5, 14, 14, 2)
+        VectorSourceColor(RGBA(79, 93, 107, 255)) : FillPath()
+      Case #Ico_Remove
+        ; skraldespand
+        VectorSourceColor(RGBA(214, 69, 65, 255))
+        MovePathCursor(9, 6) : AddPathLine(9, 3.5) : AddPathLine(15, 3.5) : AddPathLine(15, 6)
+        StrokePath(1.8, #PB_Path_RoundCorner)
+        MovePathCursor(4, 6.5) : AddPathLine(20, 6.5)
+        StrokePath(2.2, #PB_Path_RoundEnd)
+        MovePathCursor(6, 9) : AddPathLine(7.2, 21) : AddPathLine(16.8, 21) : AddPathLine(18, 9) : ClosePath()
+        FillPath()
+        MovePathCursor(10, 11.5) : AddPathLine(10, 18.5)
+        MovePathCursor(14, 11.5) : AddPathLine(14, 18.5)
+        VectorSourceColor(RGBA(255, 255, 255, 255)) : StrokePath(1.5, #PB_Path_RoundEnd)
+      Case #Ico_Servers
+        ; to serverenheder i et rack
+        PathRoundBox(3, 3, 18, 8, 2)
+        PathRoundBox(3, 13, 18, 8, 2)
+        VectorSourceColor(RGBA(79, 93, 107, 255)) : FillPath()
+        AddPathCircle(7.5, 7, 1.4)
+        AddPathCircle(7.5, 17, 1.4)
+        VectorSourceColor(RGBA(120, 220, 110, 255)) : FillPath()
+        MovePathCursor(12, 7) : AddPathLine(17.5, 7)
+        MovePathCursor(12, 17) : AddPathLine(17.5, 17)
+        VectorSourceColor(RGBA(200, 208, 216, 255)) : StrokePath(1.5, #PB_Path_RoundEnd)
+    EndSelect
+    StopVectorDrawing()
+  EndIf
+  ProcedureReturn img
+EndProcedure
+
+Procedure IconButton(gad.i, x.i, kind.i, tip.s)
+  ButtonImageGadget(gad, x, 4, 34, 30, ImageID(MakeIcon(kind)))
+  GadgetToolTip(gad, tip)
+EndProcedure
+
+;------------------------------------------------------------------------------
 ; Layout og vindue
 ;------------------------------------------------------------------------------
 Procedure Layout()
@@ -1701,13 +1789,14 @@ AddStatusBarField(140)
 AddStatusBarField(#PB_Ignore)
 
 ; værktøjslinje
-ButtonGadget(#G_BtnAddFile,   6, 5, 116, 28, "Tilføj torrent")
-ButtonGadget(#G_BtnAddMagnet, 126, 5, 116, 28, "Tilføj magnet")
-ButtonGadget(#G_BtnStart,     250, 5, 64, 28, "Start")
-ButtonGadget(#G_BtnStop,      318, 5, 64, 28, "Stop")
-ButtonGadget(#G_BtnRemove,    386, 5, 64, 28, "Fjern")
-ComboBoxGadget(#G_Server,     470, 6, 190, 26)
-ButtonGadget(#G_BtnServers,   664, 5, 90, 28, "Servere...")
+IconButton(#G_BtnAddFile,   6,   #Ico_AddFile,   "Tilføj torrent-fil (Ctrl+O)")
+IconButton(#G_BtnAddMagnet, 42,  #Ico_AddMagnet, "Tilføj magnet-link (Ctrl+U)")
+IconButton(#G_BtnStart,     88,  #Ico_Start,     "Start valgte torrents")
+IconButton(#G_BtnStop,      124, #Ico_Stop,      "Stop valgte torrents")
+IconButton(#G_BtnRemove,    160, #Ico_Remove,    "Fjern valgte torrents...")
+ComboBoxGadget(#G_Server,   208, 6, 190, 26)
+GadgetToolTip(#G_Server, "Aktiv server")
+IconButton(#G_BtnServers,   402, #Ico_Servers,   "Administrer servere...")
 TextGadget(#G_SearchLbl, 0, 0, 44, 20, "Søg:")
 StringGadget(#G_Search, 0, 0, 100, 26, "")
 
@@ -1858,7 +1947,7 @@ End
 ; EnableXP
 ; DPIAware
 ; UseIcon = rtorrent_remote.ico
-; Executable = ..\rtorrent_remote.exe
+; Executable = rtorrent_remote.exe
 ; IncludeVersionInfo
 ; VersionField0 = 0.1
 ; VersionField1 = 0.1
