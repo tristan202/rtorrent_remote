@@ -13,7 +13,6 @@ CompilerIf Not #PB_Compiler_Thread
 CompilerEndIf
 
 #APP_NAME           = "rTorrent Remote"
-#NF_LIST            = 20          ; antal felter pr. torrent i d.multicall2
 #MY_LVN_COLUMNCLICK = -108
 
 #EvPoll = #PB_Event_FirstCustomValue
@@ -94,39 +93,15 @@ Enumeration 1
   #M_Sidebar
 EndEnumeration
 
+XIncludeFile "backend.pbi"
+
 Structure Server
   name.s
+  type.i
   url.s
   user.s
   pass.s
   noSSL.i
-EndStructure
-
-Structure Torrent
-  hash.s
-  name.s
-  size.q
-  done.q
-  leftB.q
-  downRate.q
-  upRate.q
-  ratio.q
-  upTotal.q
-  downTotal.q
-  eta.q
-  finished.q
-  seedSecs.q
-  progress.d
-  state.l
-  complete.l
-  active.l
-  hashing.l
-  seeds.l
-  peers.l
-  lbl.s
-  message.s
-  dir.s
-  status.s
 EndStructure
 
 Structure MY_NMLV
@@ -140,17 +115,15 @@ Global CurServer.i = -1
 Global NewList Tor.Torrent()
 
 Global gMutex    = CreateMutex()
-Global gRpcMutex = CreateMutex()
 Global gThread.i, gQuit.i, gRefresh.i
-Global gURL.s, gUser.s, gPass.s, gNoSSL.i
+Global gConn.Conn
 Global gDetTab.i, gDetHash.s
-Global gListXml.s, gDetXml.s, gResTab.i, gResHash.s
+Global gListRaw.s, gDetRaw.s, gResTab.i, gResHash.s, gResType.i
 
 Global gShownErr.s
 Global gInstMutex.i
 Global gShowMsg.i = RegisterWindowMessage_("rTorrentRemote_ShowWindow")
 Global gWinX.i, gWinY.i, gWinW.i, gWinH.i, gWinMax.i, gWinValid.i
-Global gSrvTime.q, gSrvTimeNew.q
 Global Dim gColVisible.i(11)
 Global Dim gColWidth.i(11)
 Global Dim gColName.s(11)
@@ -207,26 +180,6 @@ Procedure.s ProgText(p.d)
   ProcedureReturn StrD(p, 1) + " %"
 EndProcedure
 
-Procedure.s B64(*mem, size.i)
-  Protected r.s
-  If *mem = 0 Or size <= 0 : ProcedureReturn "" : EndIf
-  r = Base64Encoder(*mem, size)
-  r = RemoveString(r, #CR$)
-  r = RemoveString(r, #LF$)
-  ProcedureReturn r
-EndProcedure
-
-Procedure.s BasicAuth(user.s, pass.s)
-  Protected s.s = user + ":" + pass
-  Protected len.i = StringByteLength(s, #PB_UTF8)
-  Protected *b = AllocateMemory(len + 2)
-  Protected r.s
-  PokeS(*b, s, -1, #PB_UTF8)
-  r = B64(*b, len)
-  FreeMemory(*b)
-  ProcedureReturn "Basic " + r
-EndProcedure
-
 ; Simpel (ikke-kryptografisk) tilsloering af adgangskoden i ini-filen
 Procedure.s ObfEnc(s.s)
   Protected i.i, r.s
@@ -244,227 +197,9 @@ Procedure.s ObfDec(h.s)
   ProcedureReturn r
 EndProcedure
 
-Procedure.s NormalizeUrl(u.s)
-  Protected p.i, rest.s
-  u = Trim(u)
-  p = FindString(u, "://")
-  If p
-    rest = Mid(u, p + 3)
-    If FindString(rest, "/") = 0 : u + "/RPC2" : EndIf
-  EndIf
-  ProcedureReturn u
-EndProcedure
-
-;------------------------------------------------------------------------------
-; XML-RPC
-;------------------------------------------------------------------------------
-Procedure.s XmlEsc(s.s)
-  s = ReplaceString(s, "&", "&amp;")
-  s = ReplaceString(s, "<", "&lt;")
-  s = ReplaceString(s, ">", "&gt;")
-  ProcedureReturn s
-EndProcedure
-
-Procedure.s XmlUnesc(s.s)
-  If FindString(s, "&") = 0 : ProcedureReturn s : EndIf
-  s = ReplaceString(s, "&lt;", "<")
-  s = ReplaceString(s, "&gt;", ">")
-  s = ReplaceString(s, "&quot;", Chr(34))
-  s = ReplaceString(s, "&apos;", "'")
-  s = ReplaceString(s, "&amp;", "&")
-  ProcedureReturn s
-EndProcedure
-
-Procedure.s PS(s.s)
-  ProcedureReturn "<param><value><string>" + XmlEsc(s) + "</string></value></param>"
-EndProcedure
-
-Procedure.s MakeXml(method.s, params.s)
-  ProcedureReturn "<?xml version=" + Chr(34) + "1.0" + Chr(34) + "?><methodCall><methodName>" + method + "</methodName><params>" + params + "</params></methodCall>"
-EndProcedure
-
-Procedure.s RpcCall(url.s, user.s, pass.s, noSSL.i, body.s)
-  Protected NewMap hdr.s()
-  Protected req.i, flags.i, resp.s, code.s
-  hdr("Authorization") = BasicAuth(user, pass)
-  hdr("Content-Type")  = "text/xml"
-  If noSSL : flags = #PB_HTTP_NoSSLCheck : EndIf
-  LockMutex(gRpcMutex)
-  req = HTTPRequest(#PB_HTTP_Post, url, body, flags, hdr())
-  If req
-    code = HTTPInfo(req, #PB_HTTP_StatusCode)
-    resp = HTTPInfo(req, #PB_HTTP_Response)
-    FinishHTTP(req)
-    If code <> "200"
-      If code = "401"
-        resp = "ERR:HTTP 401 - forkert brugernavn/adgangskode"
-      Else
-        resp = "ERR:HTTP " + code + " - tjek URL (normalt .../RPC2)"
-      EndIf
-    EndIf
-  Else
-    resp = "ERR:Kunne ikke forbinde til serveren"
-  EndIf
-  UnlockMutex(gRpcMutex)
-  ProcedureReturn resp
-EndProcedure
-
-Procedure.s CurCall(xml.s)
-  ProcedureReturn RpcCall(gURL, gUser, gPass, gNoSSL, xml)
-EndProcedure
-
-; Udtraekker alle "blade" (string/i4/i8/...) i raekkefoelge
-Procedure ParseLeaves(xml.s, List out.s())
-  Protected pos.i = 1, lt.i, gt.i, endPos.i
-  Protected tag.s, txt.s
-  ClearList(out())
-  Repeat
-    lt = FindString(xml, "<", pos)
-    If lt = 0 : Break : EndIf
-    gt = FindString(xml, ">", lt)
-    If gt = 0 : Break : EndIf
-    tag = Mid(xml, lt + 1, gt - lt - 1)
-    pos = gt + 1
-    Select tag
-      Case "string", "i4", "i8", "i2", "int", "boolean", "double", "base64"
-        endPos = FindString(xml, "</" + tag + ">", pos)
-        If endPos = 0 : Break : EndIf
-        txt = Mid(xml, pos, endPos - pos)
-        AddElement(out())
-        out() = XmlUnesc(txt)
-        pos = endPos + Len(tag) + 3
-      Case "string/"
-        AddElement(out())
-        out() = ""
-    EndSelect
-  ForEver
-EndProcedure
-
-Procedure.s ResultError(r.s)
-  Protected NewList L.s()
-  If Left(r, 4) = "ERR:" : ProcedureReturn Mid(r, 5) : EndIf
-  If FindString(r, "<fault>")
-    ParseLeaves(r, L())
-    If LastElement(L()) : ProcedureReturn L() : EndIf
-    ProcedureReturn "Ukendt XML-RPC-fejl"
-  EndIf
-  ProcedureReturn ""
-EndProcedure
-
-Procedure.s ListCall()
-  Protected f.s = "d.hash=,d.name=,d.size_bytes=,d.completed_bytes=,d.down.rate=,d.up.rate=,d.ratio=,d.state=,d.complete=,d.is_active=,d.peers_complete=,d.peers_accounted=,d.custom1=,d.message=,d.hashing=,d.left_bytes=,d.up.total=,d.down.total=,d.directory=,d.timestamp.finished="
-  Protected p.s = PS("") + PS("main")
-  Protected i.i
-  For i = 1 To #NF_LIST
-    p + PS(StringField(f, i, ","))
-  Next
-  ProcedureReturn MakeXml("d.multicall2", p)
-EndProcedure
-
-Procedure.s DetailCall(tab.i, hash.s)
-  Select tab
-    Case 1
-      ProcedureReturn MakeXml("t.multicall", PS(hash) + PS("") + PS("t.url=") + PS("t.is_enabled=") + PS("t.scrape_complete=") + PS("t.scrape_incomplete=") + PS("t.scrape_downloaded="))
-    Case 2
-      ProcedureReturn MakeXml("p.multicall", PS(hash) + PS("") + PS("p.address=") + PS("p.port=") + PS("p.client_version=") + PS("p.completed_percent=") + PS("p.down_rate=") + PS("p.up_rate="))
-    Case 3
-      ProcedureReturn MakeXml("f.multicall", PS(hash) + PS("") + PS("f.path=") + PS("f.size_bytes=") + PS("f.completed_chunks=") + PS("f.size_chunks=") + PS("f.priority="))
-  EndSelect
-  ProcedureReturn ""
-EndProcedure
-
-; Sender flere kommandoer pr. torrent i ét kald (system.multicall)
-Procedure.s MultiCall(methods.s, List hashes.s())
-  Protected x.s, m.s, i.i, n.i = CountString(methods, "|") + 1
-  x = "<param><value><array><data>"
-  ForEach hashes()
-    For i = 1 To n
-      m = StringField(methods, i, "|")
-      x + "<value><struct><member><name>methodName</name><value><string>" + m + "</string></value></member>"
-      x + "<member><name>params</name><value><array><data><value><string>" + hashes() + "</string></value></data></array></value></member></struct></value>"
-    Next
-  Next
-  x + "</data></array></value></param>"
-  ProcedureReturn CurCall(MakeXml("system.multicall", x))
-EndProcedure
-
-Procedure.s LoadCall(method.s, payload.s, dir.s)
-  Protected p.s = PS("") + payload
-  If dir <> ""
-    p + PS("d.directory.set=" + Chr(34) + dir + Chr(34))
-  EndIf
-  ProcedureReturn CurCall(MakeXml(method, p))
-EndProcedure
-
 ;------------------------------------------------------------------------------
 ; Torrent-data
 ;------------------------------------------------------------------------------
-Procedure ComputeTorrent(*t.Torrent)
-  If *t\size > 0
-    *t\progress = *t\done * 100.0 / *t\size
-  Else
-    *t\progress = 0
-  EndIf
-  If *t\complete : *t\progress = 100 : EndIf
-  If *t\leftB > 0 And *t\downRate > 0
-    *t\eta = *t\leftB / *t\downRate
-  Else
-    *t\eta = -1
-  EndIf
-  If *t\hashing
-    *t\status = "Tjekker"
-  ElseIf *t\state = 0
-    If *t\complete : *t\status = "Færdig" : Else : *t\status = "Stoppet" : EndIf
-  ElseIf *t\active = 0
-    *t\status = "Pause"
-  ElseIf *t\complete
-    *t\status = "Seeder"
-  Else
-    *t\status = "Henter"
-  EndIf
-  *t\seedSecs = 0
-  If *t\complete And *t\finished > 0 And gSrvTime > *t\finished
-    *t\seedSecs = gSrvTime - *t\finished
-  EndIf
-EndProcedure
-
-Procedure ParseTorrents(xml.s)
-  Protected NewList L.s()
-  Protected Dim f.s(#NF_LIST - 1)
-  Protected idx.i = 0
-  ParseLeaves(xml, L())
-  ClearList(Tor())
-  ForEach L()
-    f(idx) = L()
-    idx + 1
-    If idx = #NF_LIST
-      idx = 0
-      AddElement(Tor())
-      Tor()\hash      = f(0)
-      Tor()\name      = f(1)
-      Tor()\size      = Val(f(2))
-      Tor()\done      = Val(f(3))
-      Tor()\downRate  = Val(f(4))
-      Tor()\upRate    = Val(f(5))
-      Tor()\ratio     = Val(f(6))
-      Tor()\state     = Val(f(7))
-      Tor()\complete  = Val(f(8))
-      Tor()\active    = Val(f(9))
-      Tor()\seeds     = Val(f(10))
-      Tor()\peers     = Val(f(11))
-      Tor()\lbl       = URLDecoder(f(12))
-      Tor()\message   = f(13)
-      Tor()\hashing   = Val(f(14))
-      Tor()\leftB     = Val(f(15))
-      Tor()\upTotal   = Val(f(16))
-      Tor()\downTotal = Val(f(17))
-      Tor()\dir       = f(18)
-      Tor()\finished  = Val(f(19))
-      ComputeTorrent(@Tor())
-    EndIf
-  Next
-EndProcedure
-
 Procedure SortTorrents()
   Protected fl.i = #PB_Sort_Ascending
   If gSortCol < 0 : ProcedureReturn : EndIf
@@ -642,52 +377,38 @@ Procedure UpdateGeneral()
   Next
 EndProcedure
 
-Procedure FillDetail(gad.i, det.s)
-  Protected NewList L.s()
-  Protected Dim f.s(7)
-  Protected nf.i, idx.i = 0, txt.s, tot.q, pct.d, pr.s
-  Select gad
-    Case #G_Trackers : nf = 5
-    Case #G_Peers    : nf = 6
-    Case #G_Files    : nf = 5
-    Default          : ProcedureReturn
-  EndSelect
-  ParseLeaves(det, L())
-  ClearGadgetItems(gad)
-  ForEach L()
-    f(idx) = L()
-    idx + 1
-    If idx = nf
-      idx = 0
-      Select gad
-        Case #G_Trackers
-          If f(1) = "1" : pr = "Aktiv" : Else : pr = "Deaktiveret" : EndIf
-          txt = f(0) + #LF$ + pr + #LF$ + f(2) + #LF$ + f(3) + #LF$ + f(4)
-        Case #G_Peers
-          txt = f(0) + #LF$ + f(1) + #LF$ + f(2) + #LF$ + f(3) + " %" + #LF$ + FmtSpeed(Val(f(4))) + #LF$ + FmtSpeed(Val(f(5)))
-        Case #G_Files
-          tot = Val(f(3))
-          pct = 0
-          If tot > 0 : pct = Val(f(2)) * 100.0 / tot : EndIf
-          Select Val(f(4))
-            Case 0 : pr = "Spring over"
-            Case 2 : pr = "Høj"
-            Default : pr = "Normal"
-          EndSelect
-          txt = f(0) + #LF$ + FmtSize(Val(f(1))) + #LF$ + ProgText(pct) + #LF$ + pr
-      EndSelect
-      AddGadgetItem(gad, -1, txt)
-    EndIf
-  Next
-EndProcedure
-
-Procedure UpdateDetails(det.s, tab.i, hash.s)
+Procedure UpdateDetails(type.i, det.s, tab.i, hash.s)
+  Protected NewList tr.TrackerInfo()
+  Protected NewList pe.PeerInfo()
+  Protected NewList fi.FileInfo()
+  Protected st.s, pr.s
   If tab <> gDetTab Or hash <> gDetHash : ProcedureReturn : EndIf
-  If det = "" Or ResultError(det) <> "" : ProcedureReturn : EndIf
+  If det = "" Or Backend_DetailsError(type, det) <> "" : ProcedureReturn : EndIf
   Select tab
-    Case 1 : FillDetail(#G_Trackers, det)
-    Case 2 : FillDetail(#G_Peers, det)
-    Case 3 : FillDetail(#G_Files, det)
+    Case 1
+      Backend_ParseTrackers(type, det, tr())
+      ClearGadgetItems(#G_Trackers)
+      ForEach tr()
+        If tr()\enabled : st = "Aktiv" : Else : st = "Deaktiveret" : EndIf
+        AddGadgetItem(#G_Trackers, -1, tr()\url + #LF$ + st + #LF$ + Str(tr()\seeds) + #LF$ + Str(tr()\peers) + #LF$ + Str(tr()\downloads))
+      Next
+    Case 2
+      Backend_ParsePeers(type, det, pe())
+      ClearGadgetItems(#G_Peers)
+      ForEach pe()
+        AddGadgetItem(#G_Peers, -1, pe()\ip + #LF$ + Str(pe()\port) + #LF$ + pe()\client + #LF$ + StrD(pe()\progress, 0) + " %" + #LF$ + FmtSpeed(pe()\downRate) + #LF$ + FmtSpeed(pe()\upRate))
+      Next
+    Case 3
+      Backend_ParseFiles(type, det, fi())
+      ClearGadgetItems(#G_Files)
+      ForEach fi()
+        Select fi()\priority
+          Case 0 : pr = "Spring over"
+          Case 2 : pr = "Høj"
+          Default : pr = "Normal"
+        EndSelect
+        AddGadgetItem(#G_Files, -1, fi()\path + #LF$ + FmtSize(fi()\size) + #LF$ + ProgText(fi()\progress) + #LF$ + pr)
+      Next
   EndSelect
 EndProcedure
 
@@ -709,15 +430,15 @@ Procedure OnSelection()
 EndProcedure
 
 Procedure OnPoll()
-  Protected xml.s, det.s, tab.i, hash.s, e.s
+  Protected raw.s, det.s, tab.i, hash.s, type.i, e.s
   Protected dl.q, ul.q, srv.s = ""
   LockMutex(gMutex)
-  xml = gListXml : det = gDetXml : tab = gResTab : hash = gResHash : gSrvTime = gSrvTimeNew
+  raw = gListRaw : det = gDetRaw : tab = gResTab : hash = gResHash : type = gResType
   UnlockMutex(gMutex)
-  If xml = "" : ProcedureReturn : EndIf
+  If raw = "" : ProcedureReturn : EndIf
   If CurServer >= 0 And SelectElement(Servers(), CurServer) : srv = Servers()\name : EndIf
 
-  e = ResultError(xml)
+  e = Backend_ListError(type, raw)
   If e <> ""
     StatusBarText(0, 0, "Fejl: " + e)
     If e <> gShownErr
@@ -728,11 +449,11 @@ Procedure OnPoll()
   EndIf
   gShownErr = ""
 
-  ParseTorrents(xml)
+  Backend_ParseList(type, raw, Tor())
   SortTorrents()
   RefreshList()
   OnSelection()
-  UpdateDetails(det, tab, hash)
+  UpdateDetails(type, det, tab, hash)
 
   ForEach Tor()
     dl + Tor()\downRate
@@ -759,31 +480,23 @@ EndProcedure
 ; Baggrundstraad der poller serveren
 ;------------------------------------------------------------------------------
 Procedure PollThread(dummy.i)
-  Protected url.s, user.s, pass.s, noSSL.i, tab.i, hash.s
-  Protected resp.s, det.s, i.i, tm.s, srvT.q
-  Protected NewList tl.s()
+  Protected c.Conn, tab.i, hash.s, resp.s, det.s, i.i
   While gQuit = 0
     LockMutex(gMutex)
-    url = gURL : user = gUser : pass = gPass : noSSL = gNoSSL
+    CopyStructure(@gConn, @c, Conn)
     tab = gDetTab : hash = gDetHash
     UnlockMutex(gMutex)
     gRefresh = 0
 
-    If url <> ""
-      resp = RpcCall(url, user, pass, noSSL, ListCall())
+    If c\url <> ""
+      resp = Backend_FetchList(@c)
       det = ""
-      If tab > 0 And hash <> "" And Left(resp, 4) <> "ERR:"
-        det = RpcCall(url, user, pass, noSSL, DetailCall(tab, hash))
-      EndIf
-      srvT = 0
-      If Left(resp, 4) <> "ERR:"
-        tm = RpcCall(url, user, pass, noSSL, MakeXml("system.time", ""))
-        ParseLeaves(tm, tl())
-        If FirstElement(tl()) : srvT = Val(tl()) : EndIf
+      If tab > 0 And hash <> "" And Backend_ListError(c\type, resp) = ""
+        det = Backend_FetchDetails(@c, tab, hash)
       EndIf
       LockMutex(gMutex)
-      If url = gURL
-        gListXml = resp : gDetXml = det : gResTab = tab : gResHash = hash : gSrvTimeNew = srvT
+      If c\url = gConn\url And c\type = gConn\type
+        gListRaw = resp : gDetRaw = det : gResTab = tab : gResHash = hash : gResType = c\type
       EndIf
       UnlockMutex(gMutex)
       PostEvent(#EvPoll, #Win, 0)
@@ -860,6 +573,7 @@ Procedure LoadServers()
       PreferenceGroup("Server" + Str(i))
       AddElement(Servers())
       Servers()\name  = ReadPreferenceString("Name", "")
+      Servers()\type  = Backend_TypeFromKey(ReadPreferenceString("Type", "rtorrent"))
       Servers()\url   = ReadPreferenceString("Url", "")
       Servers()\user  = ReadPreferenceString("User", "")
       Servers()\pass  = ObfDec(ReadPreferenceString("Pass", ""))
@@ -897,6 +611,7 @@ Procedure SaveServers()
     ForEach Servers()
       PreferenceGroup("Server" + Str(i))
       WritePreferenceString("Name", Servers()\name)
+      WritePreferenceString("Type", Backend_TypeKey(Servers()\type))
       WritePreferenceString("Url", Servers()\url)
       WritePreferenceString("User", Servers()\user)
       WritePreferenceString("Pass", ObfEnc(Servers()\pass))
@@ -1045,15 +760,17 @@ EndProcedure
 Procedure ApplyServer()
   LockMutex(gMutex)
   If CurServer >= 0 And SelectElement(Servers(), CurServer)
-    gURL = Servers()\url : gUser = Servers()\user : gPass = Servers()\pass : gNoSSL = Servers()\noSSL
+    gConn\type = Servers()\type
+    gConn\url = Servers()\url : gConn\user = Servers()\user : gConn\pass = Servers()\pass : gConn\noSSL = Servers()\noSSL
     SetWindowTitle(#Win, #APP_NAME + " - " + Servers()\name)
     StatusBarText(0, 0, "Forbinder til " + Servers()\name + " ...")
   Else
-    gURL = "" : gUser = "" : gPass = "" : gNoSSL = 0
+    gConn\type = #BT_RTorrent
+    gConn\url = "" : gConn\user = "" : gConn\pass = "" : gConn\noSSL = 0
     SetWindowTitle(#Win, #APP_NAME)
     StatusBarText(0, 0, "Ingen server valgt - brug Server > Administrer servere...")
   EndIf
-  gListXml = "" : gDetXml = ""
+  gListRaw = "" : gDetRaw = ""
   gDetHash = ""
   UnlockMutex(gMutex)
   ClearList(Tor())
@@ -1112,7 +829,8 @@ Procedure ServerDialog()
               SetGadgetText(#G_SrvUser, "") : SetGadgetText(#G_SrvPass, "")
               SetGadgetState(#G_SrvNoSSL, 0)
             Case #G_SrvSave
-              url = NormalizeUrl(GetGadgetText(#G_SrvUrl))
+              ; indtil serverdialogen faar et valg af klienttype, er alle servere rTorrent
+              url = Backend_NormalizeUrl(#BT_RTorrent, GetGadgetText(#G_SrvUrl))
               If Trim(GetGadgetText(#G_SrvName)) = "" Or url = ""
                 MessageRequester(#APP_NAME, "Udfyld mindst navn og URL.", #PB_MessageRequester_Warning)
               Else
@@ -1125,6 +843,7 @@ Procedure ServerDialog()
                   sel = ListIndex(Servers())
                 EndIf
                 Servers()\name  = Trim(GetGadgetText(#G_SrvName))
+                Servers()\type  = #BT_RTorrent
                 Servers()\url   = url
                 Servers()\user  = GetGadgetText(#G_SrvUser)
                 Servers()\pass  = GetGadgetText(#G_SrvPass)
@@ -1169,8 +888,7 @@ EndProcedure
 ; Kommandoer: tilfoej / start / stop / fjern
 ;------------------------------------------------------------------------------
 Procedure.i AddTorrentFile(path.s, start.i, dir.s)
-  Protected id.i, size.i, *buf, b64.s, r.s, e.s, method.s = "load.raw_start"
-  If start = #False : method = "load.raw" : EndIf
+  Protected id.i, size.i, *buf, e.s
   id = ReadFile(#PB_Any, path)
   If id = 0
     MessageRequester(#APP_NAME, "Kan ikke åbne filen:" + #LF$ + path, #PB_MessageRequester_Error)
@@ -1185,10 +903,8 @@ Procedure.i AddTorrentFile(path.s, start.i, dir.s)
   *buf = AllocateMemory(size)
   ReadData(id, *buf, size)
   CloseFile(id)
-  b64 = B64(*buf, size)
+  e = Backend_AddFile(@gConn, *buf, size, start, dir)
   FreeMemory(*buf)
-  r = LoadCall(method, "<param><value><base64>" + b64 + "</base64></value></param>", dir)
-  e = ResultError(r)
   If e <> ""
     MessageRequester(#APP_NAME, "Kunne ikke tilføje " + GetFilePart(path) + ":" + #LF$ + e, #PB_MessageRequester_Error)
     ProcedureReturn #False
@@ -1197,16 +913,14 @@ Procedure.i AddTorrentFile(path.s, start.i, dir.s)
 EndProcedure
 
 Procedure AddMagnets(txt.s, start.i, dir.s)
-  Protected i.i, n.i, ln.s, r.s, e.s, firstErr.s = "", method.s = "load.start"
-  If start = #False : method = "load.normal" : EndIf
+  Protected i.i, n.i, ln.s, e.s, firstErr.s = ""
   txt = ReplaceString(txt, #CRLF$, #LF$)
   txt = ReplaceString(txt, #CR$, #LF$)
   n = CountString(txt, #LF$) + 1
   For i = 1 To n
     ln = Trim(StringField(txt, i, #LF$))
     If ln <> "" And (LCase(Left(ln, 7)) = "magnet:" Or LCase(Left(ln, 4)) = "http")
-      r = LoadCall(method, PS(ln), dir)
-      e = ResultError(r)
+      e = Backend_AddUrl(@gConn, ln, start, dir)
       If e <> "" And firstErr = "" : firstErr = e : EndIf
     EndIf
   Next
@@ -1218,7 +932,7 @@ EndProcedure
 
 Procedure AddFilesDialog()
   Protected f.s
-  If gURL = "" : MessageRequester(#APP_NAME, "Vælg først en server.") : ProcedureReturn : EndIf
+  If gConn\url = "" : MessageRequester(#APP_NAME, "Vælg først en server.") : ProcedureReturn : EndIf
   f = OpenFileRequester("Vælg torrent-filer", "", "Torrent-filer (*.torrent)|*.torrent|Alle filer (*.*)|*.*", 0, #PB_Requester_MultiSelection)
   While f <> ""
     AddTorrentFile(f, #True, "")
@@ -1229,7 +943,7 @@ EndProcedure
 
 Procedure MagnetDialog()
   Protected ev.i, quit.i, ok.i, txt.s, dir.s, start.i
-  If gURL = "" : MessageRequester(#APP_NAME, "Vælg først en server.") : ProcedureReturn : EndIf
+  If gConn\url = "" : MessageRequester(#APP_NAME, "Vælg først en server.") : ProcedureReturn : EndIf
   DisableWindow(#Win, #True)
   If OpenWindow(#WinMag, 0, 0, 540, 320, "Tilføj magnet-links", #PB_Window_SystemMenu | #PB_Window_WindowCentered, WindowID(#Win))
     ApplyIcon(WindowID(#WinMag))
@@ -1267,84 +981,30 @@ Procedure MagnetDialog()
   If ok : AddMagnets(txt, start, dir) : EndIf
 EndProcedure
 
-Procedure DoAction(methods.s, all.i)
+Procedure DoAction(act.i, all.i)
   Protected NewList h.s()
-  Protected r.s, e.s
+  Protected e.s
   If all
     ForEach Tor() : AddElement(h()) : h() = Tor()\hash : Next
   Else
     GetSelectedHashes(h())
   EndIf
   If ListSize(h()) = 0 : ProcedureReturn : EndIf
-  r = MultiCall(methods, h())
-  e = ResultError(r)
+  e = Backend_Action(@gConn, act, h())
   If e <> "" : MessageRequester(#APP_NAME, "Fejl: " + e, #PB_MessageRequester_Error) : EndIf
   gRefresh = 1
-EndProcedure
-
-; Ekstra sikkerhedstjek foer der slettes noget paa serveren
-Procedure.i SafeDataPath(path.s, nm.s)
-  path = RTrim(path, "/")
-  If nm = "" Or Left(path, 1) <> "/" : ProcedureReturn #False : EndIf
-  If FindString(path, "..") : ProcedureReturn #False : EndIf
-  If Right(path, Len(nm) + 1) <> "/" + nm : ProcedureReturn #False : EndIf
-  If CountString(path, "/") < 4 : ProcedureReturn #False : EndIf
-  ProcedureReturn #True
-EndProcedure
-
-; Stopper, sletter data paa serveren (rm -rf) og fjerner derefter torrenten
-Procedure DeleteWithData(List h.s())
-  Protected NewList L.s()
-  Protected r.s, e.s, path.s, nm.s, failed.s = "", idx.i = 0, skipped.i = 0, n.i = ListSize(h())
-
-  r = MultiCall("d.base_path|d.name", h())
-  e = ResultError(r)
-  If e <> ""
-    MessageRequester(#APP_NAME, "Kunne ikke finde filernes placering:" + #LF$ + e + #LF$ + "Intet er slettet.", #PB_MessageRequester_Error)
-    ProcedureReturn
-  EndIf
-  ParseLeaves(r, L())
-  If ListSize(L()) <> n * 2
-    MessageRequester(#APP_NAME, "Serveren gav uventede svar om filernes placering." + #LF$ + "Intet er slettet.", #PB_MessageRequester_Error)
-    ProcedureReturn
-  EndIf
-
-  MultiCall("d.stop|d.close", h())
-
-  ForEach L()
-    If idx % 2 = 0
-      path = L()
-    Else
-      nm = L()
-      If SafeDataPath(path, nm)
-        r = CurCall(MakeXml("execute.nothrow.bg", PS("") + PS("rm") + PS("-rf") + PS("--") + PS(path)))
-        e = ResultError(r)
-        If e <> "" : failed = e : EndIf
-      Else
-        skipped + 1
-      EndIf
-    EndIf
-    idx + 1
-  Next
-
-  MultiCall("d.erase", h())
-  gRefresh = 1
-
-  If failed <> ""
-    MessageRequester(#APP_NAME, "Serveren afviste sletning af filer:" + #LF$ + failed + #LF$ + "Torrenten er fjernet, men filerne kan ligge tilbage.", #PB_MessageRequester_Warning)
-  ElseIf skipped > 0
-    MessageRequester(#APP_NAME, Str(skipped) + " torrent(s) fik ikke slettet filer, fordi stien ikke kunne bekræftes som sikker." + #LF$ + "Selve torrenterne er fjernet.", #PB_MessageRequester_Warning)
-  EndIf
 EndProcedure
 
 ; withData = #False: fjern kun torrenten. #True: slet ogsaa filerne paa serveren (efter bekraeftelse)
 Procedure RemoveSelected(withData.i)
   Protected NewList h.s()
-  Protected info.s, shown.i = 0
+  Protected info.s, shown.i = 0, e.s, warn.String
   GetSelectedHashes(h())
   If ListSize(h()) = 0 : ProcedureReturn : EndIf
   If withData = #False
-    DoAction("d.erase", #False)
+    e = Backend_Remove(@gConn, h(), #False, @warn)
+    If e <> "" : MessageRequester(#APP_NAME, e, #PB_MessageRequester_Error) : EndIf
+    gRefresh = 1
     ProcedureReturn
   EndIf
 
@@ -1363,7 +1023,13 @@ Procedure RemoveSelected(withData.i)
   info + #LF$ + #LF$ + "Filerne slettes permanent og kan ikke fortrydes."
 
   If MessageRequester("Slet torrent + data", info, #PB_MessageRequester_YesNo | #PB_MessageRequester_Warning) = #PB_MessageRequester_Yes
-    DeleteWithData(h())
+    e = Backend_Remove(@gConn, h(), #True, @warn)
+    gRefresh = 1
+    If e <> ""
+      MessageRequester(#APP_NAME, e, #PB_MessageRequester_Error)
+    ElseIf warn\s <> ""
+      MessageRequester(#APP_NAME, warn\s, #PB_MessageRequester_Warning)
+    EndIf
   EndIf
 EndProcedure
 
@@ -1400,18 +1066,11 @@ Procedure ShowColumnMenu()
 EndProcedure
 
 Procedure TestConnection()
-  Protected r1.s, r2.s, msg.s
-  If gURL = ""
+  If gConn\url = ""
     MessageRequester(#APP_NAME, "Ingen server valgt.")
     ProcedureReturn
   EndIf
-  r1 = CurCall(MakeXml("system.client_version", ""))
-  msg = "URL: " + gURL + #LF$ + "Bruger: " + gUser + #LF$ + #LF$ + "system.client_version:" + #LF$ + Left(r1, 400)
-  If Left(r1, 4) <> "ERR:" And ResultError(r1) = ""
-    r2 = CurCall(ListCall())
-    msg + #LF$ + #LF$ + "d.multicall2 (" + Str(Len(r2)) + " tegn):" + #LF$ + Left(r2, 500)
-  EndIf
-  MessageRequester(#APP_NAME + " - test af forbindelse", msg)
+  MessageRequester(#APP_NAME + " - test af forbindelse", Backend_Test(@gConn))
 EndProcedure
 
 Declare Layout()
@@ -1432,11 +1091,11 @@ Procedure HandleCommand(cmd.i)
   Select cmd
     Case #M_AddFile    : AddFilesDialog()
     Case #M_AddMagnet  : MagnetDialog()
-    Case #M_Start      : DoAction("d.start|d.resume", #False)
-    Case #M_Stop       : DoAction("d.stop|d.close", #False)
-    Case #M_StartAll   : DoAction("d.start|d.resume", #True)
-    Case #M_StopAll    : DoAction("d.stop|d.close", #True)
-    Case #M_Recheck    : DoAction("d.check_hash", #False)
+    Case #M_Start      : DoAction(#Act_Start, #False)
+    Case #M_Stop       : DoAction(#Act_Stop, #False)
+    Case #M_StartAll   : DoAction(#Act_Start, #True)
+    Case #M_StopAll    : DoAction(#Act_Stop, #True)
+    Case #M_Recheck    : DoAction(#Act_Recheck, #False)
     Case #M_RemoveTorrent : RemoveSelected(#False)
     Case #M_RemoveData    : RemoveSelected(#True)
     Case #M_Servers    : ServerDialog()
