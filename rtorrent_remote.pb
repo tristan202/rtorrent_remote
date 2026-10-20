@@ -838,11 +838,21 @@ Procedure CaptureColumns()
   Next
 EndProcedure
 
+; Portable-tilstand: ligger der en portable.txt ved siden af exe-filen, gemmes
+; indstillingerne dér i stedet for i %APPDATA%\rTorrentRemote
+Procedure.s ConfigDir()
+  Protected exeDir.s = GetPathPart(ProgramFilename())
+  If FileSize(exeDir + "portable.txt") >= 0
+    ProcedureReturn exeDir
+  EndIf
+  ProcedureReturn GetEnvironmentVariable("APPDATA") + "\rTorrentRemote\"
+EndProcedure
+
 Procedure LoadServers()
   Protected n.i, i.i, c.i
   ClearList(Servers())
   CurServer = 0
-  If OpenPreferences(GetEnvironmentVariable("APPDATA") + "\rTorrentRemote\servers.ini")
+  If OpenPreferences(ConfigDir() + "servers.ini")
     PreferenceGroup("General")
     n = ReadPreferenceInteger("Count", 0)
     CurServer = ReadPreferenceInteger("Selected", 0)
@@ -876,7 +886,7 @@ Procedure LoadServers()
 EndProcedure
 
 Procedure SaveServers()
-  Protected i.i = 0, c.i, dir.s = GetEnvironmentVariable("APPDATA") + "\rTorrentRemote\"
+  Protected i.i = 0, c.i, dir.s = ConfigDir()
   CaptureWindow()
   CaptureColumns()
   CreateDirectory(dir)

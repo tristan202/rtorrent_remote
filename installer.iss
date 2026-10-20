@@ -2,7 +2,9 @@
 ; Byg med build.cmd (kompilerer programmet til build\ og laver installeren i dist\)
 
 #define AppName      "rTorrent Remote"
-#define AppVersion   "1.0"
+#ifndef AppVersion
+  #define AppVersion "1.0"   ; build.cmd sender versionen med via /DAppVersion
+#endif
 #define AppPublisher "tristan202"
 #define AppURL       "https://github.com/tristan202/rtorrent_remote"
 #define AppExe       "rtorrent_remote.exe"
