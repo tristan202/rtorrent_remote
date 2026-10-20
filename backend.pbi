@@ -7,6 +7,7 @@
 Enumeration
   #BT_RTorrent
   #BT_Transmission
+  #BT_QBittorrent
   #BT_Count         ; antal klienttyper
 EndEnumeration
 
@@ -130,6 +131,7 @@ EndProcedure
 
 XIncludeFile "backend_rtorrent.pbi"
 XIncludeFile "backend_transmission.pbi"
+XIncludeFile "backend_qbittorrent.pbi"
 
 ;------------------------------------------------------------------------------
 ; Klienttyper
@@ -139,6 +141,7 @@ Procedure.s Backend_TypeKey(type.i)
   Select type
     Case #BT_RTorrent     : ProcedureReturn "rtorrent"
     Case #BT_Transmission : ProcedureReturn "transmission"
+    Case #BT_QBittorrent  : ProcedureReturn "qbittorrent"
   EndSelect
   ProcedureReturn "rtorrent"
 EndProcedure
@@ -147,6 +150,7 @@ Procedure.i Backend_TypeFromKey(key.s)
   Select LCase(Trim(key))
     Case "rtorrent"     : ProcedureReturn #BT_RTorrent
     Case "transmission" : ProcedureReturn #BT_Transmission
+    Case "qbittorrent"  : ProcedureReturn #BT_QBittorrent
   EndSelect
   ProcedureReturn #BT_RTorrent
 EndProcedure
@@ -156,6 +160,7 @@ Procedure.s Backend_TypeName(type.i)
   Select type
     Case #BT_RTorrent     : ProcedureReturn "rTorrent (XML-RPC)"
     Case #BT_Transmission : ProcedureReturn "Transmission"
+    Case #BT_QBittorrent  : ProcedureReturn "qBittorrent"
   EndSelect
   ProcedureReturn ""
 EndProcedure
@@ -164,6 +169,7 @@ EndProcedure
 Procedure.s Backend_UrlHint(type.i)
   Select type
     Case #BT_Transmission : ProcedureReturn "URL (f.eks. https://bruger.server.usbx.me/transmission/rpc):"
+    Case #BT_QBittorrent  : ProcedureReturn "URL (f.eks. https://bruger.server.usbx.me/qbittorrent):"
   EndSelect
   ProcedureReturn "URL (f.eks. https://bruger.server.usbx.me/RPC2):"
 EndProcedure
@@ -172,6 +178,7 @@ Procedure.s Backend_NormalizeUrl(type.i, url.s)
   Select type
     Case #BT_RTorrent : ProcedureReturn RT_NormalizeUrl(url)
     Case #BT_Transmission : ProcedureReturn TR_NormalizeUrl(url)
+    Case #BT_QBittorrent  : ProcedureReturn QB_NormalizeUrl(url)
   EndSelect
   ProcedureReturn Trim(url)
 EndProcedure
@@ -185,6 +192,7 @@ Procedure.s Backend_FetchList(*c.Conn)
   Select *c\type
     Case #BT_RTorrent : ProcedureReturn RT_FetchList(*c)
     Case #BT_Transmission : ProcedureReturn TR_FetchList(*c)
+    Case #BT_QBittorrent  : ProcedureReturn QB_FetchList(*c)
   EndSelect
   ProcedureReturn ""
 EndProcedure
@@ -193,6 +201,7 @@ Procedure.s Backend_ListError(type.i, raw.s)
   Select type
     Case #BT_RTorrent : ProcedureReturn RT_ListError(raw)
     Case #BT_Transmission : ProcedureReturn TR_ListError(raw)
+    Case #BT_QBittorrent  : ProcedureReturn QB_ListError(raw)
   EndSelect
   ProcedureReturn ""
 EndProcedure
@@ -201,6 +210,7 @@ Procedure Backend_ParseList(type.i, raw.s, List t.Torrent())
   Select type
     Case #BT_RTorrent : RT_ParseList(raw, t())
     Case #BT_Transmission : TR_ParseList(raw, t())
+    Case #BT_QBittorrent  : QB_ParseList(raw, t())
   EndSelect
 EndProcedure
 
@@ -208,6 +218,7 @@ Procedure.s Backend_FetchDetails(*c.Conn, tab.i, hash.s)
   Select *c\type
     Case #BT_RTorrent : ProcedureReturn RT_FetchDetails(*c, tab, hash)
     Case #BT_Transmission : ProcedureReturn TR_FetchDetails(*c, tab, hash)
+    Case #BT_QBittorrent  : ProcedureReturn QB_FetchDetails(*c, tab, hash)
   EndSelect
   ProcedureReturn ""
 EndProcedure
@@ -216,6 +227,7 @@ Procedure.s Backend_DetailsError(type.i, raw.s)
   Select type
     Case #BT_RTorrent : ProcedureReturn RT_Error(raw)
     Case #BT_Transmission : ProcedureReturn TR_Error(raw)
+    Case #BT_QBittorrent  : ProcedureReturn QB_Error(raw)
   EndSelect
   ProcedureReturn ""
 EndProcedure
@@ -224,6 +236,7 @@ Procedure Backend_ParseTrackers(type.i, raw.s, List x.TrackerInfo())
   Select type
     Case #BT_RTorrent : RT_ParseTrackers(raw, x())
     Case #BT_Transmission : TR_ParseTrackers(raw, x())
+    Case #BT_QBittorrent  : QB_ParseTrackers(raw, x())
   EndSelect
 EndProcedure
 
@@ -231,6 +244,7 @@ Procedure Backend_ParsePeers(type.i, raw.s, List x.PeerInfo())
   Select type
     Case #BT_RTorrent : RT_ParsePeers(raw, x())
     Case #BT_Transmission : TR_ParsePeers(raw, x())
+    Case #BT_QBittorrent  : QB_ParsePeers(raw, x())
   EndSelect
 EndProcedure
 
@@ -238,6 +252,7 @@ Procedure Backend_ParseFiles(type.i, raw.s, List x.FileInfo())
   Select type
     Case #BT_RTorrent : RT_ParseFiles(raw, x())
     Case #BT_Transmission : TR_ParseFiles(raw, x())
+    Case #BT_QBittorrent  : QB_ParseFiles(raw, x())
   EndSelect
 EndProcedure
 
@@ -248,6 +263,7 @@ Procedure.s Backend_Action(*c.Conn, act.i, List h.s())
   Select *c\type
     Case #BT_RTorrent : ProcedureReturn RT_Action(*c, act, h())
     Case #BT_Transmission : ProcedureReturn TR_Action(*c, act, h())
+    Case #BT_QBittorrent  : ProcedureReturn QB_Action(*c, act, h())
   EndSelect
   ProcedureReturn ""
 EndProcedure
@@ -256,6 +272,7 @@ Procedure.s Backend_Remove(*c.Conn, List h.s(), withData.i, *warn.String)
   Select *c\type
     Case #BT_RTorrent : ProcedureReturn RT_Remove(*c, h(), withData, *warn)
     Case #BT_Transmission : ProcedureReturn TR_Remove(*c, h(), withData, *warn)
+    Case #BT_QBittorrent  : ProcedureReturn QB_Remove(*c, h(), withData, *warn)
   EndSelect
   ProcedureReturn ""
 EndProcedure
@@ -264,6 +281,7 @@ Procedure.s Backend_AddFile(*c.Conn, *buf, size.i, start.i, dir.s)
   Select *c\type
     Case #BT_RTorrent : ProcedureReturn RT_AddFile(*c, *buf, size, start, dir)
     Case #BT_Transmission : ProcedureReturn TR_AddFile(*c, *buf, size, start, dir)
+    Case #BT_QBittorrent  : ProcedureReturn QB_AddFile(*c, *buf, size, start, dir)
   EndSelect
   ProcedureReturn ""
 EndProcedure
@@ -272,6 +290,7 @@ Procedure.s Backend_AddUrl(*c.Conn, url.s, start.i, dir.s)
   Select *c\type
     Case #BT_RTorrent : ProcedureReturn RT_AddUrl(*c, url, start, dir)
     Case #BT_Transmission : ProcedureReturn TR_AddUrl(*c, url, start, dir)
+    Case #BT_QBittorrent  : ProcedureReturn QB_AddUrl(*c, url, start, dir)
   EndSelect
   ProcedureReturn ""
 EndProcedure
@@ -281,6 +300,7 @@ Procedure.s Backend_Test(*c.Conn)
   Select *c\type
     Case #BT_RTorrent : ProcedureReturn RT_Test(*c)
     Case #BT_Transmission : ProcedureReturn TR_Test(*c)
+    Case #BT_QBittorrent  : ProcedureReturn QB_Test(*c)
   EndSelect
   ProcedureReturn ""
 EndProcedure
