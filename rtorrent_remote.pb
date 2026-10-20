@@ -1237,7 +1237,8 @@ EndProcedure
 Procedure Layout()
   Protected w.i, h.i, top.i = 38, side.i = 0, detH.i, listH.i, iw.i, ih.i
   w = WindowWidth(#Win)
-  h = WindowHeight(#Win) - StatusBarHeight(0)
+  ; WindowHeight() regner menulinjen med, saa den skal ogsaa traekkes fra
+  h = WindowHeight(#Win) - MenuHeight() - StatusBarHeight(0)
   detH = h * 36 / 100
   listH = h - top - detH
   If listH < 60 : listH = 60 : EndIf
