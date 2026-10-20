@@ -27,6 +27,7 @@ rem Portable: exe + portable.txt (faar programmet til at gemme indstillinger i s
 if exist build\portable rmdir /s /q build\portable
 mkdir "%PORT%"
 copy /y build\torrentry.exe "%PORT%\" >nul
+copy /y *.lng "%PORT%\" >nul
 > "%PORT%\portable.txt" (
   echo Torrentry %VERSION% - portable
   echo.

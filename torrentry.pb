@@ -19,6 +19,7 @@ CompilerEndIf
 #EvSort = #PB_Event_FirstCustomValue + 1
 #EvHdrMenu = #PB_Event_FirstCustomValue + 2
 #M_ColBase = 100
+#M_LangBase = 200
 #MY_COL_PROGRESS = 2
 CompilerIf #PB_Compiler_64Bit
   #MY_OFF_STAGE = 24
@@ -95,6 +96,7 @@ Enumeration 1
   #M_Sidebar
 EndEnumeration
 
+XIncludeFile "lang.pbi"
 XIncludeFile "backend.pbi"
 
 Structure Server
@@ -122,7 +124,7 @@ Global gConn.Conn
 Global gDetTab.i, gDetHash.s
 Global gListRaw.s, gDetRaw.s, gResTab.i, gResHash.s, gResType.i
 
-Global gShownErr.s
+Global gShownErr.s, gErrMute.i
 Global gInstMutex.i
 Global gShowMsg.i = RegisterWindowMessage_("Torrentry_ShowWindow")
 Global gWinX.i, gWinY.i, gWinW.i, gWinH.i, gWinMax.i, gWinValid.i
@@ -139,6 +141,7 @@ Global gOldHdr.i
 Global gShownN.i = 0
 Global Dim gFilterName.s(7)
 Global Dim gFilterTxt.s(7)
+Global gStDl.s, gStSeed.s
 
 ;------------------------------------------------------------------------------
 ; Hjaelpefunktioner
@@ -169,9 +172,9 @@ Procedure.s FmtEta(s.q)
   h = (s % 86400) / 3600
   m = (s % 3600) / 60
   If d > 0
-    ProcedureReturn Str(d) + "d " + Str(h) + "t"
+    ProcedureReturn Str(d) + Lng("UnitDay") + " " + Str(h) + Lng("UnitHour")
   ElseIf h > 0
-    ProcedureReturn Str(h) + "t " + Str(m) + "m"
+    ProcedureReturn Str(h) + Lng("UnitHour") + " " + Str(m) + "m"
   ElseIf m > 0
     ProcedureReturn Str(m) + "m " + Str(s % 60) + "s"
   EndIf
@@ -225,8 +228,8 @@ EndProcedure
 Procedure.i Matches(*t.Torrent, f.i)
   Select f
     Case 0 : ProcedureReturn #True
-    Case 1 : ProcedureReturn Bool(*t\status = "Henter")
-    Case 2 : ProcedureReturn Bool(*t\status = "Seeder")
+    Case 1 : ProcedureReturn Bool(*t\status = gStDl)
+    Case 2 : ProcedureReturn Bool(*t\status = gStSeed)
     Case 3 : ProcedureReturn Bool(*t\complete <> 0)
     Case 4 : ProcedureReturn Bool(*t\state = 0 Or *t\active = 0)
     Case 5 : ProcedureReturn Bool(*t\downRate > 0 Or *t\upRate > 0)
@@ -391,7 +394,7 @@ Procedure UpdateDetails(type.i, det.s, tab.i, hash.s)
       Backend_ParseTrackers(type, det, tr())
       ClearGadgetItems(#G_Trackers)
       ForEach tr()
-        If tr()\enabled : st = "Aktiv" : Else : st = "Deaktiveret" : EndIf
+        If tr()\enabled : st = Lng("TrkEnabled") : Else : st = Lng("TrkDisabled") : EndIf
         AddGadgetItem(#G_Trackers, -1, tr()\url + #LF$ + st + #LF$ + Str(tr()\seeds) + #LF$ + Str(tr()\peers) + #LF$ + Str(tr()\downloads))
       Next
     Case 2
@@ -405,9 +408,9 @@ Procedure UpdateDetails(type.i, det.s, tab.i, hash.s)
       ClearGadgetItems(#G_Files)
       ForEach fi()
         Select fi()\priority
-          Case 0 : pr = "Spring over"
-          Case 2 : pr = "Høj"
-          Default : pr = "Normal"
+          Case 0 : pr = Lng("PrioSkip")
+          Case 2 : pr = Lng("PrioHigh")
+          Default : pr = Lng("PrioNormal")
         EndSelect
         AddGadgetItem(#G_Files, -1, fi()\path + #LF$ + FmtSize(fi()\size) + #LF$ + ProgText(fi()\progress) + #LF$ + pr)
       Next
@@ -442,14 +445,17 @@ Procedure OnPoll()
 
   e = Backend_ListError(type, raw)
   If e <> ""
-    StatusBarText(0, 0, "Fejl: " + e)
+    StatusBarText(0, 0, Lng("LblError") + ": " + e)
     If e <> gShownErr
       gShownErr = e
-      MessageRequester(#APP_NAME, "Kunne ikke hente listen:" + #LF$ + e + #LF$ + #LF$ + "Brug Server > Test forbindelse for flere detaljer.", #PB_MessageRequester_Error)
+      ; efter et sprogskift er det samme fejl, bare oversat - den er allerede vist
+      If gErrMute = 0 : MessageRequester(#APP_NAME, Lng("MsgListFailed") + #LF$ + e + #LF$ + #LF$ + Lng("MsgSeeDetails", Lng("MenuServer") + " > " + NoDots(Lng("MenuTest"))), #PB_MessageRequester_Error) : EndIf
     EndIf
+    gErrMute = 0
     ProcedureReturn
   EndIf
   gShownErr = ""
+  gErrMute = 0
 
   Backend_ParseList(type, raw, Tor())
   SortTorrents()
@@ -461,10 +467,10 @@ Procedure OnPoll()
     dl + Tor()\downRate
     ul + Tor()\upRate
   Next
-  StatusBarText(0, 0, "Forbundet: " + srv)
+  StatusBarText(0, 0, Lng("StatusConnected", srv))
   StatusBarText(0, 1, Chr(8595) + " " + FmtSize(dl) + "/s")
   StatusBarText(0, 2, Chr(8593) + " " + FmtSize(ul) + "/s")
-  StatusBarText(0, 3, Str(ListSize(Tor())) + " torrents")
+  StatusBarText(0, 3, Lng("StatusTorrents", Str(ListSize(Tor()))))
 EndProcedure
 
 Procedure OnSort()
@@ -601,6 +607,7 @@ Procedure LoadServers()
     gWinMax = ReadPreferenceInteger("Max", 0)
     PreferenceGroup("View")
     gSidebar = ReadPreferenceInteger("Sidebar", 1)
+    gLanguage = ReadPreferenceString("Language", "")
     If gWinW >= 900 And gWinH >= 520 : gWinValid = 1 : Else : gWinValid = 0 : EndIf
     ClosePreferences()
   EndIf
@@ -642,6 +649,7 @@ Procedure SaveServers()
     EndIf
     PreferenceGroup("View")
     WritePreferenceInteger("Sidebar", gSidebar)
+    WritePreferenceString("Language", gLanguage)
     ClosePreferences()
   EndIf
 EndProcedure
@@ -757,12 +765,12 @@ Procedure ApplyServer()
     gConn\type = Servers()\type
     gConn\url = Servers()\url : gConn\user = Servers()\user : gConn\pass = Servers()\pass : gConn\noSSL = Servers()\noSSL
     SetWindowTitle(#Win, #APP_NAME + " - " + Servers()\name)
-    StatusBarText(0, 0, "Forbinder til " + Servers()\name + " ...")
+    StatusBarText(0, 0, Lng("StatusConnecting", Servers()\name))
   Else
     gConn\type = #BT_RTorrent
     gConn\url = "" : gConn\user = "" : gConn\pass = "" : gConn\noSSL = 0
     SetWindowTitle(#Win, #APP_NAME)
-    StatusBarText(0, 0, "Ingen server valgt - brug Server > Administrer servere...")
+    StatusBarText(0, 0, Lng("StatusNoServer", Lng("MenuServer") + " > " + Lng("MenuServers")))
   EndIf
   gListRaw = "" : gDetRaw = ""
   gDetHash = ""
@@ -786,28 +794,28 @@ Procedure ServerDialog()
   Protected ev.i, quit.i, sel.i, url.s, type.i, i.i
 
   DisableWindow(#Win, #True)
-  If OpenWindow(#WinSrv, 0, 0, 650, 350, "Servere", #PB_Window_SystemMenu | #PB_Window_WindowCentered, WindowID(#Win))
+  If OpenWindow(#WinSrv, 0, 0, 650, 350, Lng("SrvTitle"), #PB_Window_SystemMenu | #PB_Window_WindowCentered, WindowID(#Win))
     ApplyIcon(WindowID(#WinSrv))
     ListViewGadget(#G_SrvList, 10, 10, 190, 330)
-    TextGadget(#PB_Any, 215, 12, 200, 18, "Klient:")
+    TextGadget(#PB_Any, 215, 12, 200, 18, Lng("SrvClient"))
     ComboBoxGadget(#G_SrvType, 215, 30, 420, 24)
     For i = 0 To #BT_Count - 1
       AddGadgetItem(#G_SrvType, -1, Backend_TypeName(i))
     Next
     SetGadgetState(#G_SrvType, #BT_RTorrent)
-    TextGadget(#PB_Any, 215, 62, 200, 18, "Navn:")
+    TextGadget(#PB_Any, 215, 62, 200, 18, Lng("SrvName"))
     StringGadget(#G_SrvName, 215, 80, 420, 24, "")
     TextGadget(#G_SrvUrlLbl, 215, 110, 420, 18, Backend_UrlHint(#BT_RTorrent))
     StringGadget(#G_SrvUrl, 215, 128, 420, 24, "")
-    TextGadget(#PB_Any, 215, 158, 200, 18, "Brugernavn:")
+    TextGadget(#PB_Any, 215, 158, 200, 18, Lng("SrvUser"))
     StringGadget(#G_SrvUser, 215, 176, 420, 24, "")
-    TextGadget(#PB_Any, 215, 206, 200, 18, "Adgangskode:")
+    TextGadget(#PB_Any, 215, 206, 200, 18, Lng("SrvPass"))
     StringGadget(#G_SrvPass, 215, 224, 420, 24, "", #PB_String_Password)
-    CheckBoxGadget(#G_SrvNoSSL, 215, 256, 420, 22, "Ignorer SSL-certifikatfejl")
-    ButtonGadget(#G_SrvNew,   215, 300, 95, 28, "Ny")
-    ButtonGadget(#G_SrvSave,  318, 300, 95, 28, "Gem")
-    ButtonGadget(#G_SrvDel,   421, 300, 95, 28, "Slet")
-    ButtonGadget(#G_SrvClose, 540, 300, 95, 28, "Luk")
+    CheckBoxGadget(#G_SrvNoSSL, 215, 256, 420, 22, Lng("SrvNoSSL"))
+    ButtonGadget(#G_SrvNew,   215, 300, 95, 28, Lng("BtnNew"))
+    ButtonGadget(#G_SrvSave,  318, 300, 95, 28, Lng("BtnSave"))
+    ButtonGadget(#G_SrvDel,   421, 300, 95, 28, Lng("BtnDelete"))
+    ButtonGadget(#G_SrvClose, 540, 300, 95, 28, Lng("BtnClose"))
 
     ForEach Servers() : AddGadgetItem(#G_SrvList, -1, Servers()\name) : Next
     If CurServer >= 0
@@ -843,7 +851,7 @@ Procedure ServerDialog()
               If type < 0 : type = #BT_RTorrent : EndIf
               url = Backend_NormalizeUrl(type, GetGadgetText(#G_SrvUrl))
               If Trim(GetGadgetText(#G_SrvName)) = "" Or url = ""
-                MessageRequester(#APP_NAME, "Udfyld mindst navn og URL.", #PB_MessageRequester_Warning)
+                MessageRequester(#APP_NAME, Lng("MsgFillNameUrl"), #PB_MessageRequester_Warning)
               Else
                 sel = GetGadgetState(#G_SrvList)
                 If sel >= 0 And SelectElement(Servers(), sel)
@@ -902,13 +910,13 @@ Procedure.i AddTorrentFile(path.s, start.i, dir.s)
   Protected id.i, size.i, *buf, e.s
   id = ReadFile(#PB_Any, path)
   If id = 0
-    MessageRequester(#APP_NAME, "Kan ikke åbne filen:" + #LF$ + path, #PB_MessageRequester_Error)
+    MessageRequester(#APP_NAME, Lng("MsgCantOpen") + #LF$ + path, #PB_MessageRequester_Error)
     ProcedureReturn #False
   EndIf
   size = Lof(id)
   If size <= 0 Or size > 30000000
     CloseFile(id)
-    MessageRequester(#APP_NAME, "Ugyldig filstørrelse: " + path, #PB_MessageRequester_Error)
+    MessageRequester(#APP_NAME, Lng("MsgBadSize", path), #PB_MessageRequester_Error)
     ProcedureReturn #False
   EndIf
   *buf = AllocateMemory(size)
@@ -917,7 +925,7 @@ Procedure.i AddTorrentFile(path.s, start.i, dir.s)
   e = Backend_AddFile(@gConn, *buf, size, start, dir)
   FreeMemory(*buf)
   If e <> ""
-    MessageRequester(#APP_NAME, "Kunne ikke tilføje " + GetFilePart(path) + ":" + #LF$ + e, #PB_MessageRequester_Error)
+    MessageRequester(#APP_NAME, Lng("MsgCouldNotAdd", GetFilePart(path)) + #LF$ + e, #PB_MessageRequester_Error)
     ProcedureReturn #False
   EndIf
   ProcedureReturn #True
@@ -936,15 +944,15 @@ Procedure AddMagnets(txt.s, start.i, dir.s)
     EndIf
   Next
   If firstErr <> ""
-    MessageRequester(#APP_NAME, "Fejl ved tilføjelse: " + firstErr, #PB_MessageRequester_Error)
+    MessageRequester(#APP_NAME, Lng("MsgAddError", firstErr), #PB_MessageRequester_Error)
   EndIf
   gRefresh = 1
 EndProcedure
 
 Procedure AddFilesDialog()
   Protected f.s
-  If gConn\url = "" : MessageRequester(#APP_NAME, "Vælg først en server.") : ProcedureReturn : EndIf
-  f = OpenFileRequester("Vælg torrent-filer", "", "Torrent-filer (*.torrent)|*.torrent|Alle filer (*.*)|*.*", 0, #PB_Requester_MultiSelection)
+  If gConn\url = "" : MessageRequester(#APP_NAME, Lng("MsgSelectServer")) : ProcedureReturn : EndIf
+  f = OpenFileRequester(Lng("DlgSelectFiles"), "", Lng("FilterTorrents") + " (*.torrent)|*.torrent|" + Lng("FilterAll") + " (*.*)|*.*", 0, #PB_Requester_MultiSelection)
   While f <> ""
     AddTorrentFile(f, #True, "")
     f = NextSelectedFileName()
@@ -954,18 +962,18 @@ EndProcedure
 
 Procedure MagnetDialog()
   Protected ev.i, quit.i, ok.i, txt.s, dir.s, start.i
-  If gConn\url = "" : MessageRequester(#APP_NAME, "Vælg først en server.") : ProcedureReturn : EndIf
+  If gConn\url = "" : MessageRequester(#APP_NAME, Lng("MsgSelectServer")) : ProcedureReturn : EndIf
   DisableWindow(#Win, #True)
-  If OpenWindow(#WinMag, 0, 0, 540, 320, "Tilføj magnet-links", #PB_Window_SystemMenu | #PB_Window_WindowCentered, WindowID(#Win))
+  If OpenWindow(#WinMag, 0, 0, 540, 320, Lng("MagTitle"), #PB_Window_SystemMenu | #PB_Window_WindowCentered, WindowID(#Win))
     ApplyIcon(WindowID(#WinMag))
-    TextGadget(#PB_Any, 10, 10, 520, 18, "Magnet-links (ét pr. linje):")
+    TextGadget(#PB_Any, 10, 10, 520, 18, Lng("MagLinks"))
     EditorGadget(#G_MagText, 10, 30, 520, 170)
-    TextGadget(#PB_Any, 10, 210, 520, 18, "Gem i mappe på serveren (valgfrit):")
+    TextGadget(#PB_Any, 10, 210, 520, 18, Lng("MagDir"))
     StringGadget(#G_MagDir, 10, 230, 520, 24, "")
-    CheckBoxGadget(#G_MagStart, 10, 262, 300, 22, "Start straks")
+    CheckBoxGadget(#G_MagStart, 10, 262, 300, 22, Lng("MagStart"))
     SetGadgetState(#G_MagStart, #PB_Checkbox_Checked)
-    ButtonGadget(#G_MagOK, 330, 280, 95, 30, "Tilføj")
-    ButtonGadget(#G_MagCancel, 435, 280, 95, 30, "Annuller")
+    ButtonGadget(#G_MagOK, 330, 280, 95, 30, Lng("BtnAdd"))
+    ButtonGadget(#G_MagCancel, 435, 280, 95, 30, Lng("BtnCancel"))
     SetActiveGadget(#G_MagText)
     Repeat
       ev = WaitWindowEvent()
@@ -1002,7 +1010,7 @@ Procedure DoAction(act.i, all.i)
   EndIf
   If ListSize(h()) = 0 : ProcedureReturn : EndIf
   e = Backend_Action(@gConn, act, h())
-  If e <> "" : MessageRequester(#APP_NAME, "Fejl: " + e, #PB_MessageRequester_Error) : EndIf
+  If e <> "" : MessageRequester(#APP_NAME, Lng("LblError") + ": " + e, #PB_MessageRequester_Error) : EndIf
   gRefresh = 1
 EndProcedure
 
@@ -1019,7 +1027,7 @@ Procedure RemoveSelected(withData.i)
     ProcedureReturn
   EndIf
 
-  info = "Slet " + Str(ListSize(h())) + " torrent(s) og deres filer på serveren?" + #LF$
+  info = Lng("DelConfirm", Str(ListSize(h()))) + #LF$
   ForEach h()
     ForEach Tor()
       If Tor()\hash = h()
@@ -1029,11 +1037,11 @@ Procedure RemoveSelected(withData.i)
       EndIf
     Next
   Next
-  If ListSize(h()) > 4 : info + #LF$ + "  ... og " + Str(ListSize(h()) - 4) + " mere" : EndIf
+  If ListSize(h()) > 4 : info + #LF$ + "  " + Lng("DelMore", Str(ListSize(h()) - 4)) : EndIf
 
-  info + #LF$ + #LF$ + "Filerne slettes permanent og kan ikke fortrydes."
+  info + #LF$ + #LF$ + Lng("DelPermanent")
 
-  If MessageRequester("Slet torrent + data", info, #PB_MessageRequester_YesNo | #PB_MessageRequester_Warning) = #PB_MessageRequester_Yes
+  If MessageRequester(NoDots(Lng("MenuDelData")), info, #PB_MessageRequester_YesNo | #PB_MessageRequester_Warning) = #PB_MessageRequester_Yes
     e = Backend_Remove(@gConn, h(), #True, @warn)
     gRefresh = 1
     If e <> ""
@@ -1078,13 +1086,14 @@ EndProcedure
 
 Procedure TestConnection()
   If gConn\url = ""
-    MessageRequester(#APP_NAME, "Ingen server valgt.")
+    MessageRequester(#APP_NAME, Lng("MsgNoServer"))
     ProcedureReturn
   EndIf
-  MessageRequester(#APP_NAME + " - test af forbindelse", Backend_Test(@gConn))
+  MessageRequester(#APP_NAME + " - " + Lng("TestTitle"), Backend_Test(@gConn))
 EndProcedure
 
 Declare Layout()
+Declare SetLanguage(idx.i)
 
 Procedure ToggleSidebar()
   gSidebar = 1 - gSidebar
@@ -1097,6 +1106,10 @@ EndProcedure
 Procedure HandleCommand(cmd.i)
   If cmd > #M_ColBase And cmd <= #M_ColBase + 11
     ToggleColumn(cmd - #M_ColBase)
+    ProcedureReturn
+  EndIf
+  If cmd >= #M_LangBase And cmd < #M_LangBase + ListSize(Languages())
+    SetLanguage(cmd - #M_LangBase)
     ProcedureReturn
   EndIf
   Select cmd
@@ -1114,7 +1127,7 @@ Procedure HandleCommand(cmd.i)
     Case #M_Test       : TestConnection()
     Case #M_Sidebar    : ToggleSidebar()
     Case #M_About
-      MessageRequester("Om " + #APP_NAME, #APP_NAME + " - fjernbetjening til rTorrent, Transmission, qBittorrent og Deluge" + #LF$ + "Skrevet i PureBasic.")
+      MessageRequester(Lng("AboutTitle", #APP_NAME), Lng("AboutText", #APP_NAME) + #LF$ + Lng("AboutWritten"))
     Case #M_Quit       : PostEvent(#PB_Event_CloseWindow, #Win, 0)
   EndSelect
 EndProcedure
@@ -1235,7 +1248,7 @@ Procedure Layout()
   listH = h - top - detH
   If listH < 60 : listH = 60 : EndIf
   If gSidebar : side = 190 : EndIf
-  ResizeGadget(#G_SearchLbl, w - 300, 11, 44, 20)
+  ResizeGadget(#G_SearchLbl, w - 350, 11, 92, 20)
   ResizeGadget(#G_Search, w - 252, 6, 244, 26)
   ResizeGadget(#G_Filter, 0, top, side, h - top)
   ResizeGadget(#G_List, side, top, w - side, listH)
@@ -1343,6 +1356,134 @@ Procedure WinCb(hwnd, msg, wparam, lparam)
   ProcedureReturn #PB_ProcessPureBasicEvents
 EndProcedure
 
+;------------------------------------------------------------------------------
+; Sprog: menuer og tekster saettes her, saa de kan skiftes mens programmet koerer
+;------------------------------------------------------------------------------
+Procedure BuildMenus()
+  Protected id.i
+  If IsMenu(0) : FreeMenu(0) : EndIf
+  If CreateMenu(0, WindowID(#Win))
+    MenuTitle(Lng("MenuFile"))
+    MenuItem(#M_AddFile, Lng("MenuAddFile") + #TAB$ + "Ctrl+O")
+    MenuItem(#M_AddMagnet, Lng("MenuAddMagnet") + #TAB$ + "Ctrl+U")
+    MenuBar()
+    MenuItem(#M_Quit, Lng("MenuQuit"))
+    MenuTitle(Lng("MenuTorrent"))
+    MenuItem(#M_Start, Lng("MenuStart"))
+    MenuItem(#M_Stop, Lng("MenuStop"))
+    MenuItem(#M_StartAll, Lng("MenuStartAll"))
+    MenuItem(#M_StopAll, Lng("MenuStopAll"))
+    MenuBar()
+    MenuItem(#M_Recheck, Lng("MenuRecheck"))
+    OpenSubMenu(Lng("MenuRemove"))
+      MenuItem(#M_RemoveTorrent, Lng("MenuDelTorrent"))
+      MenuItem(#M_RemoveData, Lng("MenuDelData"))
+    CloseSubMenu()
+    MenuTitle(Lng("MenuServer"))
+    MenuItem(#M_Servers, Lng("MenuServers"))
+    MenuItem(#M_Refresh, Lng("MenuRefresh") + #TAB$ + "F5")
+    MenuItem(#M_Test, Lng("MenuTest"))
+    MenuTitle(Lng("MenuView"))
+    MenuItem(#M_Sidebar, Lng("MenuSidebar") + #TAB$ + "Ctrl+B")
+    SetMenuItemState(0, #M_Sidebar, gSidebar)
+    OpenSubMenu(Lng("MenuLanguage"))
+      ForEach Languages()
+        id = #M_LangBase + ListIndex(Languages())
+        MenuItem(id, Languages()\name)
+        If Languages()\code = gLanguage : SetMenuItemState(0, id, 1) : EndIf
+      Next
+    CloseSubMenu()
+    MenuTitle(Lng("MenuHelp"))
+    MenuItem(#M_About, Lng("MenuAbout"))
+  EndIf
+  If IsMenu(1) : FreeMenu(1) : EndIf
+  If CreatePopupMenu(1)
+    MenuItem(#M_Start, Lng("MenuStart"))
+    MenuItem(#M_Stop, Lng("MenuStop"))
+    MenuBar()
+    MenuItem(#M_Recheck, Lng("MenuRecheck"))
+    OpenSubMenu(Lng("MenuRemove"))
+      MenuItem(#M_RemoveTorrent, Lng("MenuDelTorrent"))
+      MenuItem(#M_RemoveData, Lng("MenuDelData"))
+    CloseSubMenu()
+  EndIf
+  If IsMenu(3) : FreeMenu(3) : EndIf
+  If CreatePopupMenu(3)
+    MenuItem(#M_RemoveTorrent, Lng("MenuDelTorrent"))
+    MenuItem(#M_RemoveData, Lng("MenuDelData"))
+  EndIf
+EndProcedure
+
+Procedure ApplyTexts()
+  Protected i.i, keys.s
+  gStDl = Lng("StDownloading")
+  gStSeed = Lng("StSeeding")
+  BuildMenus()
+
+  GadgetToolTip(#G_BtnAddFile, Lng("TipAddFile") + " (Ctrl+O)")
+  GadgetToolTip(#G_BtnAddMagnet, Lng("TipAddMagnet") + " (Ctrl+U)")
+  GadgetToolTip(#G_BtnStart, Lng("TipStart"))
+  GadgetToolTip(#G_BtnStop, Lng("TipStop"))
+  GadgetToolTip(#G_BtnRemove, Lng("TipRemove"))
+  GadgetToolTip(#G_Server, Lng("TipServer"))
+  GadgetToolTip(#G_BtnServers, Lng("MenuServers"))
+  SetGadgetText(#G_SearchLbl, Lng("LblSearch"))
+
+  keys = "FltAll|FltDownloading|FltSeeding|FltCompleted|FltStopped|FltActive|FltInactive|FltError"
+  For i = 0 To 7
+    gFilterName(i) = Lng(StringField(keys, i + 1, "|"))
+    gFilterTxt(i) = ""
+  Next
+
+  keys = "ColName|ColSize|ColProgress|ColStatus|ColSeeds|ColPeers|ColDownSpeed|ColUpSpeed|ColEta|ColSeedTime|ColRatio|ColLabel"
+  For i = 0 To 11
+    gColName(i) = Lng(StringField(keys, i + 1, "|"))
+    SetGadgetItemText(#G_List, -1, gColName(i), i)
+  Next
+
+  keys = "TabGeneral|TabTrackers|TabPeers|TabContent"
+  For i = 0 To 3
+    SetGadgetItemText(#G_Panel, i, Lng(StringField(keys, i + 1, "|")))
+  Next
+  SetGadgetItemText(#G_General, -1, Lng("ColProperty"), 0)
+  SetGadgetItemText(#G_General, -1, Lng("ColValue"), 1)
+  keys = "URL|ColStatus|ColSeeds|ColPeers|ColDownloads"
+  For i = 0 To 4
+    SetGadgetItemText(#G_Trackers, -1, Lng(StringField(keys, i + 1, "|")), i)
+  Next
+  keys = "IP|ColPort|ColClient|ColProgress|ColDown|ColUp"
+  For i = 0 To 5
+    SetGadgetItemText(#G_Peers, -1, Lng(StringField(keys, i + 1, "|")), i)
+  Next
+  keys = "ColPath|ColSize|ColProgress|ColPriority"
+  For i = 0 To 3
+    SetGadgetItemText(#G_Files, -1, Lng(StringField(keys, i + 1, "|")), i)
+  Next
+
+  ; faste raekker i "Generelt"
+  keys = "ColName|Hash|GenSavedIn|ColSize|GenDownloaded|ColProgress|ColStatus|ColSeeds|ColPeers|ColRatio|GenUpTotal|GenDownTotal|ColLabel|GenMessage|GenSeededFor"
+  For i = 0 To 14
+    SetGadgetItemText(#G_General, i, Lng(StringField(keys, i + 1, "|")), 0)
+  Next
+
+  RefreshList()
+EndProcedure
+
+; Skifter sprog (idx i Languages()) og gemmer valget
+Procedure SetLanguage(idx.i)
+  If SelectElement(Languages(), idx) = 0 : ProcedureReturn : EndIf
+  If Languages()\code = gLanguage : ProcedureReturn : EndIf
+  LoadLanguage(Languages()\code)
+  ApplyTexts()
+  UpdateGeneral()
+  If gConn\url = ""
+    StatusBarText(0, 0, Lng("StatusNoServer", Lng("MenuServer") + " > " + Lng("MenuServers")))
+  EndIf
+  If gShownErr <> "" : gErrMute = 1 : EndIf
+  gRefresh = 1
+  SaveServers()
+EndProcedure
+
 ;==============================================================================
 ; Hovedprogram
 ;==============================================================================
@@ -1356,24 +1497,18 @@ If GetLastError_() = 183   ; ERROR_ALREADY_EXISTS
   End
 EndIf
 
-gFilterName(0) = "Alle"
-gFilterName(1) = "Henter"
-gFilterName(2) = "Seeder"
-gFilterName(3) = "Færdige"
-gFilterName(4) = "Stoppede"
-gFilterName(5) = "Aktive"
-gFilterName(6) = "Inaktive"
-gFilterName(7) = "Fejl"
-
-Define cn.s = "Navn|Størrelse|Forløb|Status|Seeds|Peers|Down-hastighed|Up-hastighed|ETA|Seedtid|Ratio|Label"
-Define cw.s = "340|85|150|80|55|55|100|100|80|90|60|100"
+Define cw.s = "340|85|150|100|55|55|100|100|80|90|60|100"
 For i = 0 To 11
-  gColName(i) = StringField(cn, i + 1, "|")
   gColWidth(i) = Val(StringField(cw, i + 1, "|"))
   gColVisible(i) = 1
 Next
 
+ScanLanguages()
 LoadServers()
+If gLanguage = "" Or LanguageExists(gLanguage) = #False
+  gLanguage = DetectLanguage()
+EndIf
+LoadLanguage(gLanguage)
 
 Define wflags.i = #PB_Window_SystemMenu | #PB_Window_SizeGadget | #PB_Window_MinimizeGadget | #PB_Window_MaximizeGadget
 Define wx.i = 0, wy.i = 0, ww.i = 1200, wh.i = 720
@@ -1388,141 +1523,81 @@ EndIf
 WindowBounds(#Win, 900, 520, #PB_Ignore, #PB_Ignore)
 ApplyIcon(WindowID(#Win))
 
-If CreateMenu(0, WindowID(#Win))
-  MenuTitle("Fil")
-  MenuItem(#M_AddFile, "Tilføj torrent-fil..." + #TAB$ + "Ctrl+O")
-  MenuItem(#M_AddMagnet, "Tilføj magnet-link..." + #TAB$ + "Ctrl+U")
-  MenuBar()
-  MenuItem(#M_Quit, "Afslut")
-  MenuTitle("Torrent")
-  MenuItem(#M_Start, "Start")
-  MenuItem(#M_Stop, "Stop")
-  MenuItem(#M_StartAll, "Start alle")
-  MenuItem(#M_StopAll, "Stop alle")
-  MenuBar()
-  MenuItem(#M_Recheck, "Gentjek hash")
-  OpenSubMenu("Fjern")
-    MenuItem(#M_RemoveTorrent, "Slet torrent")
-    MenuItem(#M_RemoveData, "Slet torrent + data...")
-  CloseSubMenu()
-  MenuTitle("Server")
-  MenuItem(#M_Servers, "Administrer servere...")
-  MenuItem(#M_Refresh, "Opdater nu" + #TAB$ + "F5")
-  MenuItem(#M_Test, "Test forbindelse...")
-  MenuTitle("Vis")
-  MenuItem(#M_Sidebar, "Sidebjælke" + #TAB$ + "Ctrl+B")
-  SetMenuItemState(0, #M_Sidebar, gSidebar)
-  MenuTitle("Hjælp")
-  MenuItem(#M_About, "Om...")
-EndIf
-If CreatePopupMenu(1)
-  MenuItem(#M_Start, "Start")
-  MenuItem(#M_Stop, "Stop")
-  MenuBar()
-  MenuItem(#M_Recheck, "Gentjek hash")
-  OpenSubMenu("Fjern")
-    MenuItem(#M_RemoveTorrent, "Slet torrent")
-    MenuItem(#M_RemoveData, "Slet torrent + data...")
-  CloseSubMenu()
-EndIf
-If CreatePopupMenu(3)
-  MenuItem(#M_RemoveTorrent, "Slet torrent")
-  MenuItem(#M_RemoveData, "Slet torrent + data...")
-EndIf
 AddKeyboardShortcut(#Win, #PB_Shortcut_Control | #PB_Shortcut_O, #M_AddFile)
 AddKeyboardShortcut(#Win, #PB_Shortcut_Control | #PB_Shortcut_U, #M_AddMagnet)
 AddKeyboardShortcut(#Win, #PB_Shortcut_F5, #M_Refresh)
 AddKeyboardShortcut(#Win, #PB_Shortcut_Control | #PB_Shortcut_B, #M_Sidebar)
 
 CreateStatusBar(0, WindowID(#Win))
-AddStatusBarField(380)
+AddStatusBarField(440)
 AddStatusBarField(140)
 AddStatusBarField(140)
 AddStatusBarField(#PB_Ignore)
 
 ; værktøjslinje
-IconButton(#G_BtnAddFile,   6,   #Ico_AddFile,   "Tilføj torrent-fil (Ctrl+O)")
-IconButton(#G_BtnAddMagnet, 42,  #Ico_AddMagnet, "Tilføj magnet-link (Ctrl+U)")
-IconButton(#G_BtnStart,     88,  #Ico_Start,     "Start valgte torrents")
-IconButton(#G_BtnStop,      124, #Ico_Stop,      "Stop valgte torrents")
-IconButton(#G_BtnRemove,    160, #Ico_Remove,    "Fjern valgte torrents")
+IconButton(#G_BtnAddFile,   6,   #Ico_AddFile,   "")
+IconButton(#G_BtnAddMagnet, 42,  #Ico_AddMagnet, "")
+IconButton(#G_BtnStart,     88,  #Ico_Start,     "")
+IconButton(#G_BtnStop,      124, #Ico_Stop,      "")
+IconButton(#G_BtnRemove,    160, #Ico_Remove,    "")
 ComboBoxGadget(#G_Server,   208, 6, 190, 26)
-GadgetToolTip(#G_Server, "Aktiv server")
-IconButton(#G_BtnServers,   402, #Ico_Servers,   "Administrer servere...")
-TextGadget(#G_SearchLbl, 0, 0, 44, 20, "Søg:")
+IconButton(#G_BtnServers,   402, #Ico_Servers,   "")
+TextGadget(#G_SearchLbl, 0, 0, 92, 20, "", #PB_Text_Right)
 StringGadget(#G_Search, 0, 0, 100, 26, "")
 
 ; sidebjælke (statusfiltre)
 ListViewGadget(#G_Filter, 0, 0, 100, 100)
 For i = 0 To 7
-  gFilterTxt(i) = gFilterName(i) + " (0)"
-  AddGadgetItem(#G_Filter, -1, gFilterTxt(i))
+  AddGadgetItem(#G_Filter, -1, "")
 Next
 SetGadgetState(#G_Filter, 0)
 HideGadget(#G_Filter, 1 - gSidebar)
 
 ; torrent-liste
-ListIconGadget(#G_List, 0, 0, 100, 100, "Navn", 340, #PB_ListIcon_FullRowSelect | #PB_ListIcon_MultiSelect | #PB_ListIcon_AlwaysShowSelection)
-AddGadgetColumn(#G_List, 1, "Størrelse", 85)
-AddGadgetColumn(#G_List, 2, "Forløb", 150)
-AddGadgetColumn(#G_List, 3, "Status", 80)
-AddGadgetColumn(#G_List, 4, "Seeds", 55)
-AddGadgetColumn(#G_List, 5, "Peers", 55)
-AddGadgetColumn(#G_List, 6, "Down-hastighed", 100)
-AddGadgetColumn(#G_List, 7, "Up-hastighed", 100)
-AddGadgetColumn(#G_List, 8, "ETA", 80)
-AddGadgetColumn(#G_List, 9, "Seedtid", 90)
-AddGadgetColumn(#G_List, 10, "Ratio", 60)
-AddGadgetColumn(#G_List, 11, "Label", 100)
+ListIconGadget(#G_List, 0, 0, 100, 100, "", 340, #PB_ListIcon_FullRowSelect | #PB_ListIcon_MultiSelect | #PB_ListIcon_AlwaysShowSelection)
+AddGadgetColumn(#G_List, 1, "", 85)
+AddGadgetColumn(#G_List, 2, "", 150)
+AddGadgetColumn(#G_List, 3, "", 80)
+AddGadgetColumn(#G_List, 4, "", 55)
+AddGadgetColumn(#G_List, 5, "", 55)
+AddGadgetColumn(#G_List, 6, "", 100)
+AddGadgetColumn(#G_List, 7, "", 100)
+AddGadgetColumn(#G_List, 8, "", 80)
+AddGadgetColumn(#G_List, 9, "", 90)
+AddGadgetColumn(#G_List, 10, "", 60)
+AddGadgetColumn(#G_List, 11, "", 100)
 
 ; detaljepanel med faneblade
 PanelGadget(#G_Panel, 0, 0, 100, 100)
-  AddGadgetItem(#G_Panel, -1, "Generelt")
-  ListIconGadget(#G_General, 0, 0, 100, 100, "Egenskab", 160, #PB_ListIcon_FullRowSelect)
-  AddGadgetColumn(#G_General, 1, "Værdi", 700)
-  AddGadgetItem(#G_Panel, -1, "Trackere")
-  ListIconGadget(#G_Trackers, 0, 0, 100, 100, "URL", 420, #PB_ListIcon_FullRowSelect)
-  AddGadgetColumn(#G_Trackers, 1, "Status", 90)
-  AddGadgetColumn(#G_Trackers, 2, "Seeds", 70)
-  AddGadgetColumn(#G_Trackers, 3, "Peers", 70)
-  AddGadgetColumn(#G_Trackers, 4, "Downloads", 90)
-  AddGadgetItem(#G_Panel, -1, "Peers")
-  ListIconGadget(#G_Peers, 0, 0, 100, 100, "IP", 160, #PB_ListIcon_FullRowSelect)
-  AddGadgetColumn(#G_Peers, 1, "Port", 60)
-  AddGadgetColumn(#G_Peers, 2, "Klient", 180)
-  AddGadgetColumn(#G_Peers, 3, "Forløb", 80)
-  AddGadgetColumn(#G_Peers, 4, "Down", 100)
-  AddGadgetColumn(#G_Peers, 5, "Up", 100)
-  AddGadgetItem(#G_Panel, -1, "Indhold")
-  ListIconGadget(#G_Files, 0, 0, 100, 100, "Sti", 500, #PB_ListIcon_FullRowSelect)
-  AddGadgetColumn(#G_Files, 1, "Størrelse", 90)
-  AddGadgetColumn(#G_Files, 2, "Forløb", 150)
-  AddGadgetColumn(#G_Files, 3, "Prioritet", 90)
+  AddGadgetItem(#G_Panel, -1, "")
+  ListIconGadget(#G_General, 0, 0, 100, 100, "", 160, #PB_ListIcon_FullRowSelect)
+  AddGadgetColumn(#G_General, 1, "", 700)
+  AddGadgetItem(#G_Panel, -1, "")
+  ListIconGadget(#G_Trackers, 0, 0, 100, 100, "", 420, #PB_ListIcon_FullRowSelect)
+  AddGadgetColumn(#G_Trackers, 1, "", 90)
+  AddGadgetColumn(#G_Trackers, 2, "", 70)
+  AddGadgetColumn(#G_Trackers, 3, "", 70)
+  AddGadgetColumn(#G_Trackers, 4, "", 90)
+  AddGadgetItem(#G_Panel, -1, "")
+  ListIconGadget(#G_Peers, 0, 0, 100, 100, "", 160, #PB_ListIcon_FullRowSelect)
+  AddGadgetColumn(#G_Peers, 1, "", 60)
+  AddGadgetColumn(#G_Peers, 2, "", 180)
+  AddGadgetColumn(#G_Peers, 3, "", 80)
+  AddGadgetColumn(#G_Peers, 4, "", 100)
+  AddGadgetColumn(#G_Peers, 5, "", 100)
+  AddGadgetItem(#G_Panel, -1, "")
+  ListIconGadget(#G_Files, 0, 0, 100, 100, "", 500, #PB_ListIcon_FullRowSelect)
+  AddGadgetColumn(#G_Files, 1, "", 90)
+  AddGadgetColumn(#G_Files, 2, "", 150)
+  AddGadgetColumn(#G_Files, 3, "", 90)
 CloseGadgetList()
 
-; faste rækker i "Generelt"
-Define lbl.s
+; faste rækker i "Generelt" (teksterne saettes i ApplyTexts)
 For i = 0 To 14
-  Select i
-    Case 0  : lbl = "Navn"
-    Case 1  : lbl = "Hash"
-    Case 2  : lbl = "Gemmes i"
-    Case 3  : lbl = "Størrelse"
-    Case 4  : lbl = "Hentet"
-    Case 5  : lbl = "Forløb"
-    Case 6  : lbl = "Status"
-    Case 7  : lbl = "Seeds"
-    Case 8  : lbl = "Peers"
-    Case 9  : lbl = "Ratio"
-    Case 10 : lbl = "Uploadet i alt"
-    Case 11 : lbl = "Downloadet i alt"
-    Case 12 : lbl = "Label"
-    Case 13 : lbl = "Besked"
-    Case 14 : lbl = "Seedet i"
-  EndSelect
-  AddGadgetItem(#G_General, -1, lbl + #LF$ + "")
+  AddGadgetItem(#G_General, -1, "" + #LF$ + "")
 Next
 
+ApplyTexts()
 ApplyColumns()
 gOldHdr = SetWindowLongPtr_(SendMessage_(GadgetID(#G_List), #LVM_GETHEADER, 0, 0), #GWL_WNDPROC, @HdrProc())
 EnableWindowDrop(#Win, #PB_Drop_Files, #PB_Drag_Copy)

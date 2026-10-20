@@ -60,13 +60,13 @@ Procedure.s RT_Http(*c.Conn, body.s)
     FinishHTTP(req)
     If code <> "200"
       If code = "401"
-        resp = "ERR:HTTP 401 - forkert brugernavn/adgangskode"
+        resp = "ERR:HTTP 401 - " + Lng("ErrBadLogin")
       Else
-        resp = "ERR:HTTP " + code + " - tjek URL (normalt .../RPC2)"
+        resp = "ERR:HTTP " + code + " - " + Lng("ErrCheckUrl", ".../RPC2")
       EndIf
     EndIf
   Else
-    resp = "ERR:Kunne ikke forbinde til serveren"
+    resp = "ERR:" + Lng("ErrConnect")
   EndIf
   UnlockMutex(gRpcMutex)
   ProcedureReturn resp
@@ -105,7 +105,7 @@ Procedure.s RT_Error(r.s)
   If FindString(r, "<fault>")
     ParseLeaves(r, L())
     If LastElement(L()) : ProcedureReturn L() : EndIf
-    ProcedureReturn "Ukendt XML-RPC-fejl"
+    ProcedureReturn Lng("ErrRTUnknown")
   EndIf
   ProcedureReturn ""
 EndProcedure
@@ -324,18 +324,18 @@ Procedure.s RT_Remove(*c.Conn, List h.s(), withData.i, *warn.String)
 
   If withData = #False
     e = RT_Error(RT_MultiCall(*c, "d.erase", h()))
-    If e <> "" : ProcedureReturn "Fejl: " + e : EndIf
+    If e <> "" : ProcedureReturn Lng("LblError") + ": " + e : EndIf
     ProcedureReturn ""
   EndIf
 
   r = RT_MultiCall(*c, "d.base_path|d.name", h())
   e = RT_Error(r)
   If e <> ""
-    ProcedureReturn "Kunne ikke finde filernes placering:" + #LF$ + e + #LF$ + "Intet er slettet."
+    ProcedureReturn Lng("ErrRTNoPath") + #LF$ + e + #LF$ + Lng("MsgNothingDeleted")
   EndIf
   ParseLeaves(r, L())
   If ListSize(L()) <> n * 2
-    ProcedureReturn "Serveren gav uventede svar om filernes placering." + #LF$ + "Intet er slettet."
+    ProcedureReturn Lng("ErrRTBadPath") + #LF$ + Lng("MsgNothingDeleted")
   EndIf
 
   RT_MultiCall(*c, "d.stop|d.close", h())
@@ -359,9 +359,9 @@ Procedure.s RT_Remove(*c.Conn, List h.s(), withData.i, *warn.String)
   RT_MultiCall(*c, "d.erase", h())
 
   If failed <> ""
-    *warn\s = "Serveren afviste sletning af filer:" + #LF$ + failed + #LF$ + "Torrenten er fjernet, men filerne kan ligge tilbage."
+    *warn\s = Lng("WarnRTRmFailed") + #LF$ + failed + #LF$ + Lng("WarnRTLeftBehind")
   ElseIf skipped > 0
-    *warn\s = Str(skipped) + " torrent(s) fik ikke slettet filer, fordi stien ikke kunne bekræftes som sikker." + #LF$ + "Selve torrenterne er fjernet."
+    *warn\s = Lng("WarnRTSkipped", Str(skipped)) + #LF$ + Lng("WarnRTRemovedAnyway")
   EndIf
   ProcedureReturn ""
 EndProcedure
@@ -381,10 +381,10 @@ EndProcedure
 Procedure.s RT_Test(*c.Conn)
   Protected r1.s, r2.s, msg.s
   r1 = RT_Http(*c, MakeXml("system.client_version", ""))
-  msg = "URL: " + *c\url + #LF$ + "Bruger: " + *c\user + #LF$ + #LF$ + "system.client_version:" + #LF$ + Left(r1, 400)
+  msg = "URL: " + *c\url + #LF$ + Lng("TestUser") + ": " + *c\user + #LF$ + #LF$ + "system.client_version:" + #LF$ + Left(r1, 400)
   If Left(r1, 4) <> "ERR:" And RT_Error(r1) = ""
     r2 = RT_Http(*c, RT_ListCall())
-    msg + #LF$ + #LF$ + "d.multicall2 (" + Str(Len(r2)) + " tegn):" + #LF$ + Left(r2, 500)
+    msg + #LF$ + #LF$ + "d.multicall2 (" + Lng("TestChars", Str(Len(r2))) + "):" + #LF$ + Left(r2, 500)
   EndIf
   ProcedureReturn msg
 EndProcedure

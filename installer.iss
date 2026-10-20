@@ -45,12 +45,19 @@ WizardStyle=modern
 [Languages]
 Name: "danish"; MessagesFile: "compiler:Languages\Danish.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "german"; MessagesFile: "compiler:Languages\German.isl"
+Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
+Name: "french"; MessagesFile: "compiler:Languages\French.isl"
+Name: "italian"; MessagesFile: "compiler:Languages\Italian.isl"
+Name: "swedish"; MessagesFile: "compiler:Languages\Swedish.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
 Source: "build\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
+; sprogfiler (DA.lng, EN.lng ...) - programmet finder dem ved siden af exe-filen
+Source: "*.lng"; DestDir: "{app}"; Flags: ignoreversion
 
 [InstallDelete]
 ; rester fra rTorrent Remote ved opgradering

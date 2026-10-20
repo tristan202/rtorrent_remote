@@ -117,15 +117,15 @@ Procedure ComputeTorrent(*t.Torrent)
     *t\eta = -1
   EndIf
   If *t\hashing
-    *t\status = "Tjekker"
+    *t\status = Lng("StChecking")
   ElseIf *t\state = 0
-    If *t\complete : *t\status = "Færdig" : Else : *t\status = "Stoppet" : EndIf
+    If *t\complete : *t\status = Lng("StFinished") : Else : *t\status = Lng("StStopped") : EndIf
   ElseIf *t\active = 0
-    *t\status = "Pause"
+    *t\status = Lng("StPaused")
   ElseIf *t\complete
-    *t\status = "Seeder"
+    *t\status = Lng("StSeeding")
   Else
-    *t\status = "Henter"
+    *t\status = Lng("StDownloading")
   EndIf
   *t\seedSecs = 0
 EndProcedure
@@ -173,11 +173,11 @@ EndProcedure
 ; Hjaelpetekst over URL-feltet i serverdialogen
 Procedure.s Backend_UrlHint(type.i)
   Select type
-    Case #BT_Transmission : ProcedureReturn "URL (f.eks. https://bruger.server.usbx.me/transmission/rpc):"
-    Case #BT_QBittorrent  : ProcedureReturn "URL (f.eks. https://bruger.server.usbx.me/qbittorrent):"
-    Case #BT_Deluge       : ProcedureReturn "URL (f.eks. https://bruger.server.usbx.me/deluge) - kun adgangskode:"
+    Case #BT_Transmission : ProcedureReturn Lng("UrlHint", "https://" + Lng("ExampleUser") + ".server.usbx.me/transmission/rpc")
+    Case #BT_QBittorrent  : ProcedureReturn Lng("UrlHint", "https://" + Lng("ExampleUser") + ".server.usbx.me/qbittorrent")
+    Case #BT_Deluge       : ProcedureReturn Lng("UrlHintPassOnly", "https://" + Lng("ExampleUser") + ".server.usbx.me/deluge")
   EndSelect
-  ProcedureReturn "URL (f.eks. https://bruger.server.usbx.me/RPC2):"
+  ProcedureReturn Lng("UrlHint", "https://" + Lng("ExampleUser") + ".server.usbx.me/RPC2")
 EndProcedure
 
 Procedure.s Backend_NormalizeUrl(type.i, url.s)

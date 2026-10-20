@@ -107,7 +107,7 @@ Procedure.s TR_Http(*c.Conn, method.s, args.s)
     If gTRSession <> "" : hdr("X-Transmission-Session-Id") = gTRSession : EndIf
     req = HTTPRequest(#PB_HTTP_Post, *c\url, body, flags, hdr())
     If req = 0
-      resp = "ERR:Kunne ikke forbinde til serveren"
+      resp = "ERR:" + Lng("ErrConnect")
       Break
     EndIf
     code = HTTPInfo(req, #PB_HTTP_StatusCode)
@@ -115,16 +115,16 @@ Procedure.s TR_Http(*c.Conn, method.s, args.s)
     If code = "409"
       gTRSession = TR_SessionFromHeaders(HTTPInfo(req, #PB_HTTP_Headers))
       FinishHTTP(req)
-      resp = "ERR:HTTP 409 - serveren gav ingen gyldig session-id"
+      resp = "ERR:HTTP 409 - " + Lng("ErrTR409")
       If gTRSession = "" : Break : EndIf
       Continue
     EndIf
     FinishHTTP(req)
     If code <> "200"
       If code = "401"
-        resp = "ERR:HTTP 401 - forkert brugernavn/adgangskode"
+        resp = "ERR:HTTP 401 - " + Lng("ErrBadLogin")
       Else
-        resp = "ERR:HTTP " + code + " - tjek URL (normalt .../transmission/rpc)"
+        resp = "ERR:HTTP " + code + " - " + Lng("ErrCheckUrl", ".../transmission/rpc")
       EndIf
     EndIf
     Break
@@ -138,11 +138,11 @@ Procedure.s TR_Error(raw.s)
   Protected json.i, r.s
   If Left(raw, 4) = "ERR:" : ProcedureReturn Mid(raw, 5) : EndIf
   json = ParseJSON(#PB_Any, raw)
-  If json = 0 : ProcedureReturn "Ugyldigt svar fra Transmission" : EndIf
+  If json = 0 : ProcedureReturn Lng("ErrInvalidResponse", "Transmission") : EndIf
   r = JS(JSONValue(json), "result")
   FreeJSON(json)
   If r = "success" : ProcedureReturn "" : EndIf
-  If r = "" : ProcedureReturn "Ugyldigt svar fra Transmission" : EndIf
+  If r = "" : ProcedureReturn Lng("ErrInvalidResponse", "Transmission") : EndIf
   ProcedureReturn r
 EndProcedure
 
@@ -231,7 +231,7 @@ Procedure TR_ParseList(raw.s, List t.Torrent())
       t()\active   = 1
       t()\complete = Bool(JD(*o, "percentDone") >= 1.0 And t()\leftB = 0)
       ComputeTorrent(@t())
-      If st = 3 Or st = 5 : t()\status = "I kø" : EndIf
+      If st = 3 Or st = 5 : t()\status = Lng("StQueued") : EndIf
       If t()\complete : t()\seedSecs = JQ(*o, "secondsSeeding") : EndIf
     Next
   EndIf
@@ -351,7 +351,7 @@ Procedure.s TR_Remove(*c.Conn, List h.s(), withData.i, *warn.String)
   Protected e.s, del.s = "false"
   If withData : del = "true" : EndIf
   e = TR_Error(TR_Http(*c, "torrent-remove", "{" + JEsc("ids") + ":" + TR_LowerIds(h()) + "," + JEsc("delete-local-data") + ":" + del + "}"))
-  If e <> "" : ProcedureReturn "Fejl: " + e : EndIf
+  If e <> "" : ProcedureReturn Lng("LblError") + ": " + e : EndIf
   ProcedureReturn ""
 EndProcedure
 
@@ -372,17 +372,17 @@ EndProcedure
 
 Procedure.s TR_Test(*c.Conn)
   Protected r.s, e.s, json.i, *a, msg.s
-  msg = "URL: " + *c\url + #LF$ + "Bruger: " + *c\user + #LF$ + #LF$
+  msg = "URL: " + *c\url + #LF$ + Lng("TestUser") + ": " + *c\user + #LF$ + #LF$
   r = TR_Http(*c, "session-get", "{" + JEsc("fields") + ":" + TR_Fields("version,rpc-version,download-dir") + "}")
   e = TR_Error(r)
   If e <> ""
-    ProcedureReturn msg + "session-get fejlede:" + #LF$ + e
+    ProcedureReturn msg + Lng("TestFailed", "session-get") + #LF$ + e
   EndIf
   json = ParseJSON(#PB_Any, r)
   If json
     *a = GetJSONMember(JSONValue(json), "arguments")
-    msg + "Transmission " + JS(*a, "version") + " (RPC-version " + Str(JQ(*a, "rpc-version")) + ")" + #LF$
-    msg + "Standardmappe: " + JS(*a, "download-dir")
+    msg + "Transmission " + JS(*a, "version") + " (" + Lng("TestRpcVersion") + " " + Str(JQ(*a, "rpc-version")) + ")" + #LF$
+    msg + Lng("TestDefaultDir") + ": " + JS(*a, "download-dir")
     FreeJSON(json)
   EndIf
   ProcedureReturn msg

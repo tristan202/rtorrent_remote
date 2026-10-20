@@ -2,7 +2,7 @@
 
 **Torrentry** is a fast, lightweight, native Windows desktop client for remotely managing torrent clients on your seedbox or home server. It supports **rTorrent**, **qBittorrent**, **Transmission** and **Deluge** from one qBittorrent-inspired interface. It is written in PureBasic and needs no web browser, Electron wrapper or runtime.
 
-> **Note:** The user interface is currently in Danish.
+The user interface is available in Danish, English, German, Spanish, French, Italian and Swedish.
 
 *Formerly known as rTorrent Remote. Existing settings are carried over automatically on first start.*
 
@@ -28,6 +28,7 @@
 * **Torrent control:** Start, Stop, Start all, Stop all and Recheck from the menu, the icon toolbar or the right-click menu.
 * **Delete submenu:** *Delete torrent* or *Delete torrent + data*. Deleting data asks for confirmation first.
 * **Customizable UI & persistence:** Sort by any column, show/hide and resize columns (right-click the header). Window size, position (multi-monitor aware), sidebar visibility and column layout are remembered.
+* **Seven languages:** Danish, English, German, Spanish, French, Italian and Swedish. On first start Torrentry follows the Windows display language (English if it has no matching language file). Switch at any time under **View → Language**.
 * **Portable mode:** Keep settings next to the exe instead of in `%APPDATA%`.
 * **Single instance:** Launching it again brings the existing window to the front.
 
@@ -35,7 +36,7 @@
 
 ## 🖥️ Server Setup
 
-Open **Server → Administrer servere…**, click **Ny**, pick the **Klient** type and fill in the URL and login. If you leave out the path, Torrentry adds the client's usual one.
+Open **Server → Manage servers…**, click **New**, pick the **Client** type and fill in the URL and login. If you leave out the path, Torrentry adds the client's usual one.
 
 | Client | Example URL | Login |
 | :--- | :--- | :--- |
@@ -44,7 +45,7 @@ Open **Server → Administrer servere…**, click **Ny**, pick the **Klient** ty
 | Transmission | `https://username.server.usbx.me/transmission/rpc` | RPC username + password |
 | Deluge | `https://username.server.usbx.me/deluge` | Web UI password only |
 
-Use **Server → Test forbindelse** to check the connection; it shows the client version and default download folder.
+Use **Server → Test connection** to check the connection; it shows the client version and default download folder.
 
 > **rTorrent and "Delete torrent + data":** rTorrent has no built-in delete-with-data, so Torrentry runs `rm -rf -- <path>` through `execute.nothrow.bg` after validating the path. Your rTorrent configuration must allow `execute` commands over RPC. The other clients delete data themselves.
 >
@@ -93,6 +94,8 @@ pbcompiler "torrentry.pb" /THREAD /XP /DPIAWARE /ICON "torrentry.ico" /EXE "torr
 | `backend_qbittorrent.pbi` | qBittorrent (WebUI API v2) |
 | `backend_transmission.pbi` | Transmission (JSON-RPC) |
 | `backend_deluge.pbi` | Deluge (Web UI JSON-RPC) |
+| `lang.pbi` | Translations: loads `*.lng`, built-in Danish defaults, language detection |
+| `DA.lng`, `EN.lng`, … | Language files (INI format, UTF-8). Add a language by copying one, translating the values and setting `LanguageName`; it appears in **View → Language** next start. |
 
 ---
 
@@ -115,7 +118,7 @@ Settings, window state, column preferences and server profiles are stored in:
 ```text
 %APPDATA%\Torrentry\servers.ini
 ```
-or next to `torrentry.exe` in portable mode. *Server passwords are obfuscated in this file, not encrypted.*
+or next to `torrentry.exe` in portable mode. The chosen language is saved there as `Language` under `[View]`. *Server passwords are obfuscated in this file, not encrypted.*
 
 ---
 

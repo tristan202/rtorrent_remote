@@ -43,7 +43,7 @@ Procedure.s DL_Raw(*c.Conn, method.s, params.s)
   hdr("Content-Type") = "application/json"
   If gDLCookie <> "" : hdr("Cookie") = gDLCookie : EndIf
   req = HTTPRequest(#PB_HTTP_Post, *c\url, body, flags, hdr())
-  If req = 0 : ProcedureReturn "ERR:Kunne ikke forbinde til serveren" : EndIf
+  If req = 0 : ProcedureReturn "ERR:" + Lng("ErrConnect") : EndIf
   code = HTTPInfo(req, #PB_HTTP_StatusCode)
   resp = HTTPInfo(req, #PB_HTTP_Response)
   ck = DL_CookieFromHeaders(HTTPInfo(req, #PB_HTTP_Headers))
@@ -51,9 +51,9 @@ Procedure.s DL_Raw(*c.Conn, method.s, params.s)
   FinishHTTP(req)
   If code <> "200"
     If code = "401"
-      ProcedureReturn "ERR:HTTP 401 - serveren kræver login foran Deluge"
+      ProcedureReturn "ERR:HTTP 401 - " + Lng("ErrDLProxyAuth")
     EndIf
-    ProcedureReturn "ERR:HTTP " + code + " - tjek URL (normalt .../deluge)"
+    ProcedureReturn "ERR:HTTP " + code + " - " + Lng("ErrCheckUrl", ".../deluge")
   EndIf
   ProcedureReturn resp
 EndProcedure
@@ -64,12 +64,12 @@ Procedure.s DL_ErrorOf(raw.s, *code.Integer = 0)
   If *code : *code\i = 0 : EndIf
   If Left(raw, 4) = "ERR:" : ProcedureReturn Mid(raw, 5) : EndIf
   json = ParseJSON(#PB_Any, raw)
-  If json = 0 : ProcedureReturn "Ugyldigt svar fra Deluge" : EndIf
+  If json = 0 : ProcedureReturn Lng("ErrInvalidResponse", "Deluge") : EndIf
   *e = GetJSONMember(JSONValue(json), "error")
   If *e And JSONType(*e) = #PB_JSON_Object
     msg = JS(*e, "message")
     If *code : *code\i = JQ(*e, "code") : EndIf
-    If msg = "" : msg = "Ukendt fejl fra Deluge" : EndIf
+    If msg = "" : msg = Lng("ErrUnknownFrom", "Deluge") : EndIf
   EndIf
   FreeJSON(json)
   ProcedureReturn msg
@@ -94,7 +94,7 @@ Procedure.s DL_Login(*c.Conn)
   e = DL_ErrorOf(r)
   If e <> "" : ProcedureReturn "ERR:" + e : EndIf
   If DL_ResultTrue(r) = #False
-    ProcedureReturn "ERR:Login afvist - forkert adgangskode"
+    ProcedureReturn "ERR:" + Lng("ErrDLBadPass")
   EndIf
   r = DL_Raw(*c, "web.connected", "[]")
   If DL_ErrorOf(r) = "" And DL_ResultTrue(r) : ProcedureReturn "" : EndIf
@@ -112,9 +112,9 @@ Procedure.s DL_Login(*c.Conn)
     EndIf
     FreeJSON(json)
   EndIf
-  If id = "" : ProcedureReturn "ERR:Deluge Web UI kender ingen daemon at forbinde til" : EndIf
+  If id = "" : ProcedureReturn "ERR:" + Lng("ErrDLNoDaemon") : EndIf
   e = DL_ErrorOf(DL_Raw(*c, "web.connect", "[" + JEsc(id) + "]"))
-  If e <> "" : ProcedureReturn "ERR:Kunne ikke forbinde Web UI til daemon: " + e : EndIf
+  If e <> "" : ProcedureReturn "ERR:" + Lng("ErrDLDaemon", e) : EndIf
   ProcedureReturn ""
 EndProcedure
 
@@ -204,10 +204,10 @@ Procedure DL_ParseList(raw.s, List t.Torrent())
       t()\complete = Bool(JQ(*o, "is_finished") Or JD(*o, "progress") >= 100.0)
       ComputeTorrent(@t())
       Select st
-        Case "Queued"     : t()\status = "I kø"
-        Case "Moving"     : t()\status = "Flytter"
-        Case "Allocating" : t()\status = "Allokerer"
-        Case "Error"      : t()\status = "Fejl"
+        Case "Queued"     : t()\status = Lng("StQueued")
+        Case "Moving"     : t()\status = Lng("StMoving")
+        Case "Allocating" : t()\status = Lng("StAllocating")
+        Case "Error"      : t()\status = Lng("StError")
       EndSelect
       If t()\complete : t()\seedSecs = JQ(*o, "seeding_time") : EndIf
     Wend
@@ -323,7 +323,7 @@ Procedure.s DL_Remove(*c.Conn, List h.s(), withData.i, *warn.String)
   If withData : del = "true" : EndIf
   r = DL_Call(*c, "core.remove_torrents", "[" + DL_Ids(h()) + "," + del + "]")
   e = DL_ErrorOf(r)
-  If e <> "" : ProcedureReturn "Fejl: " + e : EndIf
+  If e <> "" : ProcedureReturn Lng("LblError") + ": " + e : EndIf
   ; resultatet er en liste over de torrents, der ikke kunne fjernes
   json = ParseJSON(#PB_Any, r)
   If json
@@ -331,7 +331,7 @@ Procedure.s DL_Remove(*c.Conn, List h.s(), withData.i, *warn.String)
     If *res And JSONType(*res) = #PB_JSON_Array : n = JSONArraySize(*res) : EndIf
     FreeJSON(json)
   EndIf
-  If n > 0 : ProcedureReturn "Fejl: " + Str(n) + " torrent(s) kunne ikke fjernes" : EndIf
+  If n > 0 : ProcedureReturn Lng("LblError") + ": " + Lng("ErrNotRemoved", Str(n)) : EndIf
   ProcedureReturn ""
 EndProcedure
 
@@ -357,7 +357,7 @@ Procedure.s DL_Test(*c.Conn)
   msg = "URL: " + *c\url + #LF$ + #LF$
   r = DL_Call(*c, "daemon.info", "[]")
   e = DL_ErrorOf(r)
-  If e <> "" : ProcedureReturn msg + "daemon.info fejlede:" + #LF$ + e : EndIf
+  If e <> "" : ProcedureReturn msg + Lng("TestFailed", "daemon.info") + #LF$ + e : EndIf
   json = ParseJSON(#PB_Any, r)
   If json
     If DL_Result(json) And JSONType(DL_Result(json)) = #PB_JSON_String
@@ -369,7 +369,7 @@ Procedure.s DL_Test(*c.Conn)
   json = ParseJSON(#PB_Any, r)
   If json
     If DL_Result(json) And JSONType(DL_Result(json)) = #PB_JSON_String
-      msg + "Standardmappe: " + GetJSONString(DL_Result(json))
+      msg + Lng("TestDefaultDir") + ": " + GetJSONString(DL_Result(json))
     EndIf
     FreeJSON(json)
   EndIf

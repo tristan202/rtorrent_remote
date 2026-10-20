@@ -76,7 +76,7 @@ Procedure.s QB_Raw(*c.Conn, path.s, *data, size.i, contentType.s)
   Else
     req = HTTPRequest(#PB_HTTP_Get, url, "", flags, hdr())
   EndIf
-  If req = 0 : ProcedureReturn "ERR:Kunne ikke forbinde til serveren" : EndIf
+  If req = 0 : ProcedureReturn "ERR:" + Lng("ErrConnect") : EndIf
   code = HTTPInfo(req, #PB_HTTP_StatusCode)
   resp = HTTPInfo(req, #PB_HTTP_Response)
   If path = "/api/v2/auth/login" And code = "200" And Trim(resp) = "Ok."
@@ -105,12 +105,12 @@ Procedure.s QB_Login(*c.Conn)
   Select StringField(r, 1, #LF$)
     Case "200"
       If Trim(Mid(r, FindString(r, #LF$) + 1)) <> "Ok."
-        ProcedureReturn "ERR:Login afvist - forkert brugernavn/adgangskode"
+        ProcedureReturn "ERR:" + Lng("ErrQBBadLogin")
       EndIf
     Case "403"
-      ProcedureReturn "ERR:Login blokeret af qBittorrent (for mange forkerte forsøg)"
+      ProcedureReturn "ERR:" + Lng("ErrQBBanned")
     Default
-      ProcedureReturn "ERR:HTTP " + StringField(r, 1, #LF$) + " ved login - tjek URL (normalt .../qbittorrent)"
+      ProcedureReturn "ERR:HTTP " + StringField(r, 1, #LF$) + " " + Lng("ErrAtLogin") + " - " + Lng("ErrCheckUrl", ".../qbittorrent")
   EndSelect
   ProcedureReturn ""
 EndProcedure
@@ -135,7 +135,7 @@ Procedure.s QB_Call(*c.Conn, path.s, *data, size.i, contentType.s)
     If code = "200"
       r = Mid(r, FindString(r, #LF$) + 1)
     ElseIf code = "404"
-      r = "ERR:HTTP 404 - ukendt API-kald eller torrent"
+      r = "ERR:HTTP 404 - " + Lng("ErrQB404")
     Else
       r = "ERR:HTTP " + code + " " + Trim(Mid(r, FindString(r, #LF$) + 1))
     EndIf
@@ -164,7 +164,7 @@ Procedure.s QB_Error(raw.s)
   Protected json.i
   If Left(raw, 4) = "ERR:" : ProcedureReturn Mid(raw, 5) : EndIf
   json = ParseJSON(#PB_Any, raw)
-  If json = 0 : ProcedureReturn "Ugyldigt svar fra qBittorrent" : EndIf
+  If json = 0 : ProcedureReturn Lng("ErrInvalidResponse", "qBittorrent") : EndIf
   FreeJSON(json)
   ProcedureReturn ""
 EndProcedure
@@ -176,7 +176,7 @@ EndProcedure
 ; Fejltekst fra et kommando-svar (tekst, ikke JSON)
 Procedure.s QB_CmdError(raw.s)
   If Left(raw, 4) = "ERR:" : ProcedureReturn Mid(raw, 5) : EndIf
-  If Trim(raw) = "Fails." : ProcedureReturn "qBittorrent afviste kaldet" : EndIf
+  If Trim(raw) = "Fails." : ProcedureReturn Lng("ErrQBRejected") : EndIf
   ProcedureReturn ""
 EndProcedure
 
@@ -224,15 +224,15 @@ Procedure QB_ParseList(raw.s, List t.Torrent())
       t()\active   = 1
       t()\complete = Bool(JD(*o, "progress") >= 1.0)
       Select st
-        Case "error"       : t()\message = "Fejl i torrenten"
-        Case "missingFiles" : t()\message = "Filerne mangler på serveren"
+        Case "error"       : t()\message = Lng("MsgTorrentError")
+        Case "missingFiles" : t()\message = Lng("MsgFilesMissing")
       EndSelect
       ComputeTorrent(@t())
       Select st
-        Case "queuedDL", "queuedUP" : t()\status = "I kø"
-        Case "metaDL"               : t()\status = "Henter metadata"
-        Case "moving"               : t()\status = "Flytter"
-        Case "error", "missingFiles" : t()\status = "Fejl"
+        Case "queuedDL", "queuedUP" : t()\status = Lng("StQueued")
+        Case "metaDL"               : t()\status = Lng("StMetadata")
+        Case "moving"               : t()\status = Lng("StMoving")
+        Case "error", "missingFiles" : t()\status = Lng("StError")
       EndSelect
       If t()\complete : t()\seedSecs = JQ(*o, "seeding_time") : EndIf
     Next
@@ -353,7 +353,7 @@ Procedure.s QB_Remove(*c.Conn, List h.s(), withData.i, *warn.String)
   Protected e.s, del.s = "false"
   If withData : del = "true" : EndIf
   e = QB_CmdError(QB_Post(*c, "/api/v2/torrents/delete", "hashes=" + FormEnc(QB_Hashes(h())) + "&deleteFiles=" + del))
-  If e <> "" : ProcedureReturn "Fejl: " + e : EndIf
+  If e <> "" : ProcedureReturn Lng("LblError") + ": " + e : EndIf
   ProcedureReturn ""
 EndProcedure
 
@@ -401,14 +401,14 @@ EndProcedure
 
 Procedure.s QB_Test(*c.Conn)
   Protected v.s, api.s, sp.s, msg.s
-  msg = "URL: " + *c\url + #LF$ + "Bruger: " + *c\user + #LF$ + #LF$
+  msg = "URL: " + *c\url + #LF$ + Lng("TestUser") + ": " + *c\user + #LF$ + #LF$
   v = QB_Get(*c, "/api/v2/app/version")
   If Left(v, 4) = "ERR:"
-    ProcedureReturn msg + "app/version fejlede:" + #LF$ + Mid(v, 5)
+    ProcedureReturn msg + Lng("TestFailed", "app/version") + #LF$ + Mid(v, 5)
   EndIf
   api = QB_Get(*c, "/api/v2/app/webapiVersion")
   sp  = QB_Get(*c, "/api/v2/app/defaultSavePath")
   msg + "qBittorrent " + v + " (WebUI API " + api + ")" + #LF$
-  msg + "Standardmappe: " + sp
+  msg + Lng("TestDefaultDir") + ": " + sp
   ProcedureReturn msg
 EndProcedure
