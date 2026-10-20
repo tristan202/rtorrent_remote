@@ -37,7 +37,6 @@ Enumeration 1
   #Win
   #WinSrv
   #WinMag
-  #WinRem
 EndEnumeration
 
 Enumeration 1
@@ -75,11 +74,6 @@ Enumeration 1
   #G_MagStart
   #G_MagOK
   #G_MagCancel
-  ; fjern-dialog
-  #G_RemChk
-  #G_RemWarn
-  #G_RemOK
-  #G_RemCancel
 EndEnumeration
 
 Enumeration 1
@@ -91,7 +85,8 @@ Enumeration 1
   #M_StartAll
   #M_StopAll
   #M_Recheck
-  #M_Remove
+  #M_RemoveTorrent
+  #M_RemoveData
   #M_Servers
   #M_Refresh
   #M_Test
@@ -1332,53 +1327,18 @@ Procedure DeleteWithData(List h.s())
   EndIf
 EndProcedure
 
-; Returnerer 0 = annuller, 1 = fjern torrent, 2 = fjern torrent og slet data
-Procedure.i RemoveDialog(info.s)
-  Protected ev.i, quit.i, res.i = 0
-  DisableWindow(#Win, #True)
-  If OpenWindow(#WinRem, 0, 0, 500, 250, "Fjern torrent", #PB_Window_SystemMenu | #PB_Window_WindowCentered, WindowID(#Win))
-    ApplyIcon(WindowID(#WinRem))
-    TextGadget(#PB_Any, 15, 12, 470, 100, info)
-    CheckBoxGadget(#G_RemChk, 15, 120, 470, 22, "Slet også de downloadede filer på serveren")
-    TextGadget(#G_RemWarn, 15, 148, 470, 36, "")
-    SetGadgetColor(#G_RemWarn, #PB_Gadget_FrontColor, RGB(190, 0, 0))
-    ButtonGadget(#G_RemOK, 290, 205, 95, 30, "Fjern")
-    ButtonGadget(#G_RemCancel, 392, 205, 95, 30, "Annuller")
-    Repeat
-      ev = WaitWindowEvent()
-      Select ev
-        Case #PB_Event_CloseWindow
-          If EventWindow() = #WinRem : quit = #True : EndIf
-        Case #PB_Event_Gadget
-          Select EventGadget()
-            Case #G_RemChk
-              If GetGadgetState(#G_RemChk)
-                SetGadgetText(#G_RemWarn, "Advarsel: filerne slettes permanent og kan ikke fortrydes.")
-              Else
-                SetGadgetText(#G_RemWarn, "")
-              EndIf
-            Case #G_RemOK
-              If GetGadgetState(#G_RemChk) : res = 2 : Else : res = 1 : EndIf
-              quit = #True
-            Case #G_RemCancel
-              quit = #True
-          EndSelect
-      EndSelect
-    Until quit
-    CloseWindow(#WinRem)
-  EndIf
-  DisableWindow(#Win, #False)
-  SetActiveWindow(#Win)
-  ProcedureReturn res
-EndProcedure
-
-Procedure RemoveSelected()
+; withData = #False: fjern kun torrenten. #True: slet ogsaa filerne paa serveren (efter bekraeftelse)
+Procedure RemoveSelected(withData.i)
   Protected NewList h.s()
-  Protected info.s, shown.i = 0, res.i
+  Protected info.s, shown.i = 0
   GetSelectedHashes(h())
   If ListSize(h()) = 0 : ProcedureReturn : EndIf
+  If withData = #False
+    DoAction("d.erase", #False)
+    ProcedureReturn
+  EndIf
 
-  info = "Fjern " + Str(ListSize(h())) + " torrent(s) fra rTorrent?" + #LF$
+  info = "Slet " + Str(ListSize(h())) + " torrent(s) og deres filer på serveren?" + #LF$
   ForEach h()
     ForEach Tor()
       If Tor()\hash = h()
@@ -1390,11 +1350,11 @@ Procedure RemoveSelected()
   Next
   If ListSize(h()) > 4 : info + #LF$ + "  ... og " + Str(ListSize(h()) - 4) + " mere" : EndIf
 
-  res = RemoveDialog(info)
-  Select res
-    Case 1 : DoAction("d.erase", #False)
-    Case 2 : DeleteWithData(h())
-  EndSelect
+  info + #LF$ + #LF$ + "Filerne slettes permanent og kan ikke fortrydes."
+
+  If MessageRequester("Slet torrent + data", info, #PB_MessageRequester_YesNo | #PB_MessageRequester_Warning) = #PB_MessageRequester_Yes
+    DeleteWithData(h())
+  EndIf
 EndProcedure
 
 Procedure ApplyColumns()
@@ -1467,7 +1427,8 @@ Procedure HandleCommand(cmd.i)
     Case #M_StartAll   : DoAction("d.start|d.resume", #True)
     Case #M_StopAll    : DoAction("d.stop|d.close", #True)
     Case #M_Recheck    : DoAction("d.check_hash", #False)
-    Case #M_Remove     : RemoveSelected()
+    Case #M_RemoveTorrent : RemoveSelected(#False)
+    Case #M_RemoveData    : RemoveSelected(#True)
     Case #M_Servers    : ServerDialog()
     Case #M_Refresh    : gRefresh = 1
     Case #M_Test       : TestConnection()
@@ -1759,7 +1720,10 @@ If CreateMenu(0, WindowID(#Win))
   MenuItem(#M_StopAll, "Stop alle")
   MenuBar()
   MenuItem(#M_Recheck, "Gentjek hash")
-  MenuItem(#M_Remove, "Fjern...")
+  OpenSubMenu("Fjern")
+    MenuItem(#M_RemoveTorrent, "Slet torrent")
+    MenuItem(#M_RemoveData, "Slet torrent + data...")
+  CloseSubMenu()
   MenuTitle("Server")
   MenuItem(#M_Servers, "Administrer servere...")
   MenuItem(#M_Refresh, "Opdater nu" + #TAB$ + "F5")
@@ -1775,7 +1739,14 @@ If CreatePopupMenu(1)
   MenuItem(#M_Stop, "Stop")
   MenuBar()
   MenuItem(#M_Recheck, "Gentjek hash")
-  MenuItem(#M_Remove, "Fjern...")
+  OpenSubMenu("Fjern")
+    MenuItem(#M_RemoveTorrent, "Slet torrent")
+    MenuItem(#M_RemoveData, "Slet torrent + data...")
+  CloseSubMenu()
+EndIf
+If CreatePopupMenu(3)
+  MenuItem(#M_RemoveTorrent, "Slet torrent")
+  MenuItem(#M_RemoveData, "Slet torrent + data...")
 EndIf
 AddKeyboardShortcut(#Win, #PB_Shortcut_Control | #PB_Shortcut_O, #M_AddFile)
 AddKeyboardShortcut(#Win, #PB_Shortcut_Control | #PB_Shortcut_U, #M_AddMagnet)
@@ -1793,7 +1764,7 @@ IconButton(#G_BtnAddFile,   6,   #Ico_AddFile,   "Tilføj torrent-fil (Ctrl+O)")
 IconButton(#G_BtnAddMagnet, 42,  #Ico_AddMagnet, "Tilføj magnet-link (Ctrl+U)")
 IconButton(#G_BtnStart,     88,  #Ico_Start,     "Start valgte torrents")
 IconButton(#G_BtnStop,      124, #Ico_Stop,      "Stop valgte torrents")
-IconButton(#G_BtnRemove,    160, #Ico_Remove,    "Fjern valgte torrents...")
+IconButton(#G_BtnRemove,    160, #Ico_Remove,    "Fjern valgte torrents")
 ComboBoxGadget(#G_Server,   208, 6, 190, 26)
 GadgetToolTip(#G_Server, "Aktiv server")
 IconButton(#G_BtnServers,   402, #Ico_Servers,   "Administrer servere...")
@@ -1904,7 +1875,7 @@ Repeat
         Case #G_BtnAddMagnet : HandleCommand(#M_AddMagnet)
         Case #G_BtnStart     : HandleCommand(#M_Start)
         Case #G_BtnStop      : HandleCommand(#M_Stop)
-        Case #G_BtnRemove    : HandleCommand(#M_Remove)
+        Case #G_BtnRemove    : DisplayPopupMenu(3, WindowID(#Win))
         Case #G_BtnServers   : HandleCommand(#M_Servers)
         Case #G_Server
           i = GetGadgetState(#G_Server)
