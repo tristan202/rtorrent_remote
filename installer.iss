@@ -1,15 +1,16 @@
-; Inno Setup-script til rTorrent Remote
+; Inno Setup-script til Torrentry
 ; Byg med build.cmd (kompilerer programmet til build\ og laver installeren i dist\)
 
-#define AppName      "rTorrent Remote"
+#define AppName      "Torrentry"
 #ifndef AppVersion
   #define AppVersion "1.0"   ; build.cmd sender versionen med via /DAppVersion
 #endif
 #define AppPublisher "tristan202"
-#define AppURL       "https://github.com/tristan202/rtorrent_remote"
-#define AppExe       "rtorrent_remote.exe"
+#define AppURL       "https://github.com/tristan202/torrentry"
+#define AppExe       "torrentry.exe"
 
 [Setup]
+; AppId er uaendret fra rTorrent Remote, saa en ny version opgraderer den gamle
 AppId={{D7FA09DE-C41D-40E1-92DC-82DA2193C27A}
 AppName={#AppName}
 AppVersion={#AppVersion}
@@ -25,12 +26,13 @@ PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-; programmet bruger denne mutex til "kun én instans", saa installeren kan se om det koerer
-AppMutex=rTorrentRemote_SingleInstance_Mutex
+; programmet bruger disse mutexer til "kun én instans", saa installeren kan se om det koerer
+; (den anden er fra foer navneskiftet)
+AppMutex=Torrentry_SingleInstance_Mutex,rTorrentRemote_SingleInstance_Mutex
 CloseApplications=yes
 OutputDir=dist
-OutputBaseFilename=rTorrentRemote-{#AppVersion}-setup
-SetupIconFile=rtorrent_remote.ico
+OutputBaseFilename=Torrentry-{#AppVersion}-setup
+SetupIconFile=torrentry.ico
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
 VersionInfoVersion={#AppVersion}
@@ -50,6 +52,12 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "build\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
 
+[InstallDelete]
+; rester fra rTorrent Remote ved opgradering
+Type: files; Name: "{app}\rtorrent_remote.exe"
+Type: files; Name: "{autoprograms}\rTorrent Remote.lnk"
+Type: files; Name: "{autodesktop}\rTorrent Remote.lnk"
+
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
@@ -57,4 +65,4 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
-; Indstillinger og servere i %APPDATA%\rTorrentRemote bevares ved afinstallation
+; Indstillinger og servere i %APPDATA%\Torrentry bevares ved afinstallation

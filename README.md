@@ -1,45 +1,67 @@
-# rTorrent Remote
+# Torrentry
 
-**rTorrent Remote** is a fast, lightweight, native Windows desktop client for remotely managing [rTorrent](https://github.com/rakshasa/rtorrent) instances via XML-RPC over HTTP/HTTPS. Written in PureBasic, it provides a clean, responsive, qBittorrent-inspired user interface without the overhead of a web browser or Electron wrapper.
+**Torrentry** is a fast, lightweight, native Windows desktop client for remotely managing torrent clients on your seedbox or home server. It supports **rTorrent**, **qBittorrent**, **Transmission** and **Deluge** from one qBittorrent-inspired interface. It is written in PureBasic and needs no web browser, Electron wrapper or runtime.
+
+> **Note:** The user interface is currently in Danish.
+
+*Formerly known as rTorrent Remote. Existing settings are carried over automatically on first start.*
 
 ---
 
 ## ✨ Features
 
-* **Familiar Interface:** Clean layout inspired by qBittorrent/ruTorrent featuring a status sidebar, customizable torrent list, and a detailed bottom inspection panel.
-* **Multi-Server Management:** Save and quickly switch between multiple rTorrent servers/seedboxes (e.g., Ultra.cc, Whatbox, self-hosted) with HTTP Basic Authentication and optional SSL certificate bypass.
-* **Real-Time Monitoring:** Asynchronous background polling every 3 seconds keeps torrent statuses, speeds, and statistics up to date without freezing the UI.
-* **Custom Progress Bars:** Native Windows API custom-drawn progress bars directly inside the torrent list view.
-* **Sidebar Filtering & Live Search:** Filter torrents by state (*All, Downloading, Seeding, Completed, Stopped, Active, Inactive, Error*) with live counters, or filter instantly by name via the search box.
-* **Detailed Torrent Inspection:** 
-  * **General:** Hash, save directory, total size, completed bytes, speeds, ratio, seed time, labels, and tracker status messages.
-  * **Trackers:** Tracker URLs, status, seeders, leechers, and download counts.
-  * **Peers:** Connected peer IPs, ports, client versions, progress, and individual up/down rates.
-  * **Content (Files):** Individual file paths, sizes, chunk progress percentages, and priority levels.
-* **Easy Torrent Addition:**
-  * Add `.torrent` files via file dialog (`Ctrl+O`) or **Drag & Drop** directly onto the window.
-  * Add Magnet links or HTTP `.torrent` URLs (supports batch adding multiple links at once, custom target directory on the server, and start-immediately toggle).
-  * Drag & Drop raw magnet text directly into the application.
-* **Torrent Control:** Start, Stop, Start All, Stop All, Force Recheck (`d.check_hash`), and Remove torrents.
-* **Safe Remote Data Deletion:** Option to delete downloaded files directly from the server when removing a torrent, protected by built-in path validation checks (`SafeDataPath`) to prevent accidental root/directory traversal deletions.
-* **Customizable UI & Persistence:**
-  * Sort by any column (ascending/descending).
-  * Show/hide columns via right-click on the table header and resize column widths.
-  * Automatically remembers window size, position, maximize state, multi-monitor placement, sidebar visibility, and column layout in `%APPDATA%\rTorrentRemote\servers.ini`.
-* **Single Instance Enforcement:** Prevents multiple instances from running simultaneously and automatically brings the existing window to the foreground.
+* **One app, four clients:** rTorrent (XML-RPC), qBittorrent (WebUI API v2), Transmission (JSON-RPC) and Deluge (Web UI JSON-RPC). Choose the client type per server.
+* **Familiar interface:** Status sidebar, customizable torrent list and a detailed bottom inspection panel.
+* **Multi-server management:** Save several servers or seedboxes (e.g. Ultra.cc, Whatbox, self-hosted), even with different clients, and switch between them from the toolbar. Optionally ignore SSL certificate errors.
+* **Real-time monitoring:** Background polling keeps statuses, speeds and statistics up to date without freezing the UI.
+* **Custom progress bars:** Drawn directly inside the torrent list.
+* **Sidebar filtering & live search:** Filter by state (*All, Downloading, Seeding, Completed, Stopped, Active, Inactive, Error*) with live counters, or by name via the search box. Toggle the sidebar with `Ctrl+B`.
+* **Detailed torrent inspection:**
+  * **General:** Hash, save location, size, downloaded, progress, status, ratio, totals, seed time, label/category and error messages.
+  * **Trackers:** URLs, status, seeders, leechers and download counts (where the client provides them).
+  * **Peers:** IPs (IPv4 and IPv6), ports, client names, progress and up/down rates.
+  * **Content:** Files with size, progress and priority.
+* **Easy torrent addition:**
+  * Add `.torrent` files via file dialog (`Ctrl+O`) or drag & drop onto the window.
+  * Add magnet links or `.torrent` URLs (`Ctrl+U`), several at once, with an optional target folder on the server and a "start immediately" option.
+  * Drag magnet text straight into the window.
+* **Torrent control:** Start, Stop, Start all, Stop all and Recheck from the menu, the icon toolbar or the right-click menu.
+* **Delete submenu:** *Delete torrent* or *Delete torrent + data*. Deleting data asks for confirmation first.
+* **Customizable UI & persistence:** Sort by any column, show/hide and resize columns (right-click the header). Window size, position (multi-monitor aware), sidebar visibility and column layout are remembered.
+* **Portable mode:** Keep settings next to the exe instead of in `%APPDATA%`.
+* **Single instance:** Launching it again brings the existing window to the front.
 
 ---
 
-## 🖥️ Server Requirements
+## 🖥️ Server Setup
 
-Your remote rTorrent instance must expose an XML-RPC endpoint over HTTP or HTTPS (commonly `/RPC2` configured via nginx, Apache, or lighttpd) protected by HTTP Basic Authentication.
+Open **Server → Administrer servere…**, click **Ny**, pick the **Klient** type and fill in the URL and login. If you leave out the path, Torrentry adds the client's usual one.
 
-Example URL format (e.g., Ultra.cc / seedboxes):
-```text
-https://username.server.usbx.me/RPC2
-```
+| Client | Example URL | Login |
+| :--- | :--- | :--- |
+| rTorrent | `https://username.server.usbx.me/RPC2` | HTTP Basic Auth (username + password) |
+| qBittorrent | `https://username.server.usbx.me/qbittorrent` | WebUI username + password |
+| Transmission | `https://username.server.usbx.me/transmission/rpc` | RPC username + password |
+| Deluge | `https://username.server.usbx.me/deluge` | Web UI password only |
 
-> **Note on "Delete with data":** Removing a torrent *along with its downloaded data* uses the `execute.nothrow.bg` XML-RPC command (`rm -rf -- <path>`). Your rTorrent configuration must permit `execute` commands over RPC for remote file deletion to work.
+Use **Server → Test forbindelse** to check the connection; it shows the client version and default download folder.
+
+> **rTorrent and "Delete torrent + data":** rTorrent has no built-in delete-with-data, so Torrentry runs `rm -rf -- <path>` through `execute.nothrow.bg` after validating the path. Your rTorrent configuration must allow `execute` commands over RPC. The other clients delete data themselves.
+>
+> **qBittorrent:** qBittorrent bans an IP address for a while after too many failed logins.
+>
+> **Deluge:** If the Web UI is not connected to a daemon, Torrentry connects it to the first one in its host list.
+
+---
+
+## 📦 Installation
+
+Download a release and either:
+
+* run **`Torrentry-<version>-setup.exe`** (all users or just you, optional desktop shortcut), or
+* extract **`Torrentry-<version>-portable.zip`** anywhere. Settings are stored in `servers.ini` next to the program while `portable.txt` is present.
+
+Requires Windows x64.
 
 ---
 
@@ -48,17 +70,29 @@ https://username.server.usbx.me/RPC2
 ### Prerequisites
 * **OS:** Windows (x64 recommended)
 * **Compiler:** [PureBasic 6.x](https://www.purebasic.com/) (tested with PureBasic 6.40 x64)
+* **Installer (optional):** [Inno Setup 6](https://jrsoftware.org/isinfo.php)
 
 ### Compiler Options
-Before compiling or running from the PureBasic IDE, make sure the following option is enabled:
-1. Go to **Compiler > Compiler Options...**
-2. Enable **"Create threadsafe executable"** (Required! The program will throw a compiler error if disabled).
-3. *(Optional)* Enable **DPI Aware** and **Enable modern theme support (for XP and above)** for crisp rendering on modern displays.
+In the PureBasic IDE (**Compiler > Compiler Options...**):
+1. Enable **"Create threadsafe executable"** (required; the program refuses to compile without it).
+2. *(Optional)* Enable **DPI Aware** and **modern theme support** for crisp rendering.
 
-### Command Line Compilation
+### Command Line
 ```bash
-pbcompiler "rtorrent_remote.pb" /THREAD /XP /DPIAWARE /EXE "rtorrent_remote.exe"
+pbcompiler "torrentry.pb" /THREAD /XP /DPIAWARE /ICON "torrentry.ico" /EXE "torrentry.exe"
 ```
+
+`build.cmd` compiles the program and builds both the installer and the portable zip in `dist\`.
+
+### Code Layout
+| File | Purpose |
+| :--- | :--- |
+| `torrentry.pb` | User interface |
+| `backend.pbi` | Shared types and `Backend_*` procedures the UI calls |
+| `backend_rtorrent.pbi` | rTorrent (XML-RPC) |
+| `backend_qbittorrent.pbi` | qBittorrent (WebUI API v2) |
+| `backend_transmission.pbi` | Transmission (JSON-RPC) |
+| `backend_deluge.pbi` | Deluge (Web UI JSON-RPC) |
 
 ---
 
@@ -67,21 +101,21 @@ pbcompiler "rtorrent_remote.pb" /THREAD /XP /DPIAWARE /EXE "rtorrent_remote.exe"
 | Shortcut | Action |
 | :--- | :--- |
 | `Ctrl + O` | Add `.torrent` file(s) |
-| `Ctrl + U` | Add Magnet link(s) / URL(s) |
+| `Ctrl + U` | Add magnet link(s) / URL(s) |
 | `Ctrl + B` | Toggle status filter sidebar |
-| `F5` | Force immediate refresh from server |
-| `Right-click (Row)` | Open torrent action context menu |
-| `Right-click (Column Header)` | Toggle visible columns |
+| `F5` | Refresh from server now |
+| `Right-click (row)` | Torrent context menu |
+| `Right-click (column header)` | Show/hide columns |
 
 ---
 
 ## 📁 Configuration Storage
 
-All settings, window states, column preferences, and server profiles are stored locally in:
+Settings, window state, column preferences and server profiles are stored in:
 ```text
-%APPDATA%\rTorrentRemote\servers.ini
+%APPDATA%\Torrentry\servers.ini
 ```
-*(Note: Server passwords are obfuscated in the configuration file for basic privacy, not cryptographically encrypted).*
+or next to `torrentry.exe` in portable mode. *Server passwords are obfuscated in this file, not encrypted.*
 
 ---
 

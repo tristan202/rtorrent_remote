@@ -1,10 +1,10 @@
 ﻿;==============================================================================
-; rTorrent Remote - Windows-klient i PureBasic (qBittorrent-lignende)
+; Torrentry - Windows-fjernbetjening til torrentklienter, skrevet i PureBasic
 ;
-; Krav:   PureBasic 6.x (x64 anbefales)
-;         Compiler > Compiler Options > "Create threadsafe executable" = TIL
-; Server: rTorrent med XML-RPC over HTTP(S) og Basic-auth, f.eks. Ultra.cc:
-;         https://BRUGER.SERVER.usbx.me/RPC2
+; Krav:     PureBasic 6.x (x64 anbefales)
+;           Compiler > Compiler Options > "Create threadsafe executable" = TIL
+; Klienter: rTorrent (XML-RPC), Transmission, qBittorrent og Deluge (Web UI)
+;           - se backend.pbi og backend_*.pbi
 ;==============================================================================
 EnableExplicit
 
@@ -12,7 +12,7 @@ CompilerIf Not #PB_Compiler_Thread
   CompilerError "Slaa 'Create threadsafe executable' til (Compiler > Compiler Options)."
 CompilerEndIf
 
-#APP_NAME           = "rTorrent Remote"
+#APP_NAME           = "Torrentry"
 #MY_LVN_COLUMNCLICK = -108
 
 #EvPoll = #PB_Event_FirstCustomValue
@@ -124,7 +124,7 @@ Global gListRaw.s, gDetRaw.s, gResTab.i, gResHash.s, gResType.i
 
 Global gShownErr.s
 Global gInstMutex.i
-Global gShowMsg.i = RegisterWindowMessage_("rTorrentRemote_ShowWindow")
+Global gShowMsg.i = RegisterWindowMessage_("Torrentry_ShowWindow")
 Global gWinX.i, gWinY.i, gWinW.i, gWinH.i, gWinMax.i, gWinValid.i
 Global Dim gColVisible.i(11)
 Global Dim gColWidth.i(11)
@@ -554,13 +554,20 @@ Procedure CaptureColumns()
 EndProcedure
 
 ; Portable-tilstand: ligger der en portable.txt ved siden af exe-filen, gemmes
-; indstillingerne dér i stedet for i %APPDATA%\rTorrentRemote
+; indstillingerne dér i stedet for i %APPDATA%\Torrentry
 Procedure.s ConfigDir()
-  Protected exeDir.s = GetPathPart(ProgramFilename())
+  Protected exeDir.s = GetPathPart(ProgramFilename()), dir.s, old.s
   If FileSize(exeDir + "portable.txt") >= 0
     ProcedureReturn exeDir
   EndIf
-  ProcedureReturn GetEnvironmentVariable("APPDATA") + "\rTorrentRemote\"
+  dir = GetEnvironmentVariable("APPDATA") + "\Torrentry\"
+  ; foerste gang efter navneskiftet kopieres indstillingerne fra rTorrent Remote
+  old = GetEnvironmentVariable("APPDATA") + "\rTorrentRemote\servers.ini"
+  If FileSize(dir + "servers.ini") < 0 And FileSize(old) >= 0
+    CreateDirectory(dir)
+    CopyFile(old, dir + "servers.ini")
+  EndIf
+  ProcedureReturn dir
 EndProcedure
 
 Procedure LoadServers()
@@ -1122,7 +1129,7 @@ Procedure HandleCommand(cmd.i)
     Case #M_Test       : TestConnection()
     Case #M_Sidebar    : ToggleSidebar()
     Case #M_About
-      MessageRequester("Om " + #APP_NAME, #APP_NAME + " - rTorrent-klient via XML-RPC" + #LF$ + "Skrevet i PureBasic.")
+      MessageRequester("Om " + #APP_NAME, #APP_NAME + " - fjernbetjening til rTorrent, Transmission, qBittorrent og Deluge" + #LF$ + "Skrevet i PureBasic.")
     Case #M_Quit       : PostEvent(#PB_Event_CloseWindow, #Win, 0)
   EndSelect
 EndProcedure
@@ -1357,7 +1364,7 @@ EndProcedure
 Define ev.i, quit.i, i.i
 
 ; Kun én instans ad gangen
-gInstMutex = CreateMutex_(0, 1, "rTorrentRemote_SingleInstance_Mutex")
+gInstMutex = CreateMutex_(0, 1, "Torrentry_SingleInstance_Mutex")
 If GetLastError_() = 183   ; ERROR_ALREADY_EXISTS
   AllowSetForegroundWindow_(-1)
   PostMessage_($FFFF, gShowMsg, 0, 0)
@@ -1606,8 +1613,8 @@ End
 ; EnableThread
 ; EnableXP
 ; DPIAware
-; UseIcon = rtorrent_remote.ico
-; Executable = rtorrent_remote.exe
+; UseIcon = torrentry.ico
+; Executable = torrentry.exe
 ; IncludeVersionInfo
 ; VersionField0 = 1.0.0.0
 ; VersionField1 = 1.0

@@ -359,7 +359,7 @@ EndProcedure
 
 ; torrents/add kraever multipart/form-data. fileName = "" betyder ingen fil.
 Procedure.s QB_Add(*c.Conn, urls.s, fileName.s, *buf, size.i, start.i, dir.s)
-  Protected bnd.s = "----rTorrentRemote" + Hex(Random($7FFFFFFF)) + Hex(ElapsedMilliseconds())
+  Protected bnd.s = "----Torrentry" + Hex(Random($7FFFFFFF)) + Hex(ElapsedMilliseconds())
   Protected head.s = "", tail.s, stop.s = "true", *body, n1.i, n2.i, total.i, r.s
   If start : stop = "false" : EndIf
   If urls <> ""
