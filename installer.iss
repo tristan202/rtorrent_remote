@@ -3,7 +3,7 @@
 
 #define AppName      "Torrentry"
 #ifndef AppVersion
-  #define AppVersion "1.0"   ; build.cmd sender versionen med via /DAppVersion
+  #define AppVersion "1.01"  ; build.cmd sender versionen med via /DAppVersion
 #endif
 #define AppPublisher "tristan202"
 #define AppURL       "https://github.com/tristan202/torrentry"

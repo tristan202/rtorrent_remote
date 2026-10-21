@@ -50,6 +50,8 @@ Structure Torrent
   hashing.l
   seeds.l
   peers.l
+  seedsTotal.l    ; svaermens samlede antal (0 = ukendt)
+  peersTotal.l
   lbl.s
   message.s
   dir.s
@@ -128,6 +130,12 @@ Procedure ComputeTorrent(*t.Torrent)
     *t\status = Lng("StDownloading")
   EndIf
   *t\seedSecs = 0
+EndProcedure
+
+; Forbundne + svaermens total i parentes, fx "3 (120)"
+Procedure.s FmtCount(n.i, total.i)
+  If total > 0 : ProcedureReturn Str(n) + " (" + Str(total) + ")" : EndIf
+  ProcedureReturn Str(n)
 EndProcedure
 
 XIncludeFile "backend_rtorrent.pbi"

@@ -3,7 +3,7 @@ rem Kompilerer Torrentry og bygger installer + portable zip i dist\
 setlocal
 cd /d "%~dp0"
 
-set "VERSION=1.0"
+set "VERSION=1.01"
 set "PBC=%ProgramFiles%\PureBasic\Compilers\pbcompiler.exe"
 set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
 set "PORT=build\portable\Torrentry"

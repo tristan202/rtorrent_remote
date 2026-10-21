@@ -172,7 +172,7 @@ EndProcedure
 ;------------------------------------------------------------------------------
 ; Torrent-liste
 ;------------------------------------------------------------------------------
-#TR_ListFields = "hashString,name,sizeWhenDone,leftUntilDone,percentDone,rateDownload,rateUpload,uploadRatio,status,error,errorString,peersSendingToUs,peersConnected,labels,downloadDir,uploadedEver,downloadedEver,doneDate,secondsSeeding"
+#TR_ListFields = "hashString,name,sizeWhenDone,leftUntilDone,percentDone,rateDownload,rateUpload,uploadRatio,status,error,errorString,peersSendingToUs,peersConnected,trackerStats,labels,downloadDir,uploadedEver,downloadedEver,doneDate,secondsSeeding"
 
 Procedure.s TR_Fields(list.s)
   Protected i.i, n.i = CountString(list, ",") + 1, r.s = ""
@@ -188,7 +188,7 @@ Procedure.s TR_FetchList(*c.Conn)
 EndProcedure
 
 Procedure TR_ParseList(raw.s, List t.Torrent())
-  Protected json.i, *arr, *o, *lb, i.i, j.i, st.i, r.d, lb.s
+  Protected json.i, *arr, *o, *lb, *ts, *tk, i.i, j.i, st.i, r.d, lb.s
   ClearList(t())
   json = ParseJSON(#PB_Any, raw)
   If json = 0 : ProcedureReturn : EndIf
@@ -210,6 +210,15 @@ Procedure TR_ParseList(raw.s, List t.Torrent())
       t()\ratio     = r * 1000
       t()\seeds     = JQ(*o, "peersSendingToUs")
       t()\peers     = JQ(*o, "peersConnected")
+      *ts = TR_Array(*o, "trackerStats")     ; svaermens total = max over trackere
+      If *ts
+        For j = 0 To JSONArraySize(*ts) - 1
+          *tk = GetJSONElement(*ts, j)
+          If JQ(*tk, "seederCount") > t()\seedsTotal : t()\seedsTotal = JQ(*tk, "seederCount") : EndIf
+          If JQ(*tk, "leecherCount") > t()\peersTotal : t()\peersTotal = JQ(*tk, "leecherCount") : EndIf
+        Next
+      EndIf
+      t()\peersTotal + t()\seedsTotal             ; forbundne peers inkluderer seeds
       t()\upTotal   = JQ(*o, "uploadedEver")
       t()\downTotal = JQ(*o, "downloadedEver")
       t()\dir       = JS(*o, "downloadDir")

@@ -162,7 +162,7 @@ EndProcedure
 ;------------------------------------------------------------------------------
 ; Torrent-liste
 ;------------------------------------------------------------------------------
-#DL_ListFields = "name,total_wanted,total_done,progress,download_payload_rate,upload_payload_rate,ratio,state,num_seeds,num_peers,label,message,save_path,total_uploaded,all_time_download,completed_time,seeding_time,is_finished"
+#DL_ListFields = "name,total_wanted,total_done,progress,download_payload_rate,upload_payload_rate,ratio,state,num_seeds,num_peers,total_seeds,total_peers,label,message,save_path,total_uploaded,all_time_download,completed_time,seeding_time,is_finished"
 
 Procedure.s DL_FetchList(*c.Conn)
   ProcedureReturn DL_Call(*c, "core.get_torrents_status", "[{}," + TR_Fields(#DL_ListFields) + "]")
@@ -191,6 +191,11 @@ Procedure DL_ParseList(raw.s, List t.Torrent())
       t()\ratio     = r * 1000
       t()\seeds     = JQ(*o, "num_seeds")
       t()\peers     = JQ(*o, "num_seeds") + JQ(*o, "num_peers")
+      t()\seedsTotal = JQ(*o, "total_seeds")
+      If t()\seedsTotal < 0 : t()\seedsTotal = 0 : EndIf
+      t()\peersTotal = JQ(*o, "total_peers")
+      If t()\peersTotal < 0 : t()\peersTotal = 0 : EndIf
+      t()\peersTotal + t()\seedsTotal             ; forbundne peers inkluderer seeds
       t()\upTotal   = JQ(*o, "total_uploaded")
       t()\downTotal = JQ(*o, "all_time_download")
       t()\dir       = JS(*o, "save_path")

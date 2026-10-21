@@ -3,7 +3,7 @@
 ; Inkluderes af backend.pbi - brug Backend_*-procedurerne derfra.
 ;==============================================================================
 
-#RT_NF_LIST = 20          ; antal felter pr. torrent i d.multicall2
+#RT_NF_LIST = 22          ; antal felter pr. torrent i d.multicall2
 
 Global gRpcMutex = CreateMutex()
 
@@ -114,9 +114,12 @@ Procedure.s RT_ListCall()
   Protected f.s = "d.hash=,d.name=,d.size_bytes=,d.completed_bytes=,d.down.rate=,d.up.rate=,d.ratio=,d.state=,d.complete=,d.is_active=,d.peers_complete=,d.peers_accounted=,d.custom1=,d.message=,d.hashing=,d.left_bytes=,d.up.total=,d.down.total=,d.directory=,d.timestamp.finished="
   Protected p.s = PS("") + PS("main")
   Protected i.i
-  For i = 1 To #RT_NF_LIST
+  For i = 1 To #RT_NF_LIST - 2
     p + PS(StringField(f, i, ","))
   Next
+  ; Scrape-tal for alle trackere, adskilt af '#' (max findes i RT_ParseList)
+  p + PS("cat=" + Chr(34) + "$t.multicall=d.hash=,t.scrape_complete=,cat={#}" + Chr(34))
+  p + PS("cat=" + Chr(34) + "$t.multicall=d.hash=,t.scrape_incomplete=,cat={#}" + Chr(34))
   ProcedureReturn MakeXml("d.multicall2", p)
 EndProcedure
 
@@ -163,6 +166,16 @@ Procedure.s RT_ListError(raw.s)
   ProcedureReturn RT_Error(Mid(raw, FindString(raw, #LF$) + 1))
 EndProcedure
 
+; Stoerste tal i en '#'-adskilt liste
+Procedure.i RT_MaxField(s.s)
+  Protected i.i, v.i, m.i = 0
+  For i = 1 To CountString(s, "#") + 1
+    v = Val(StringField(s, i, "#"))
+    If v > m : m = v : EndIf
+  Next
+  ProcedureReturn m
+EndProcedure
+
 Procedure RT_ParseList(raw.s, List t.Torrent())
   Protected NewList L.s()
   Protected Dim f.s(#RT_NF_LIST - 1)
@@ -196,6 +209,8 @@ Procedure RT_ParseList(raw.s, List t.Torrent())
       t()\downTotal = Val(f(17))
       t()\dir       = f(18)
       t()\finished  = Val(f(19))
+      t()\seedsTotal = RT_MaxField(f(20))
+      t()\peersTotal = RT_MaxField(f(21))
       ComputeTorrent(@t())
       If t()\complete And t()\finished > 0 And srvT > t()\finished
         t()\seedSecs = srvT - t()\finished

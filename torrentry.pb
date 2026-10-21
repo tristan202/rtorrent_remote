@@ -243,7 +243,7 @@ Procedure.s RowText(*t.Torrent)
   Protected e.s = "", sd.s = ""
   If *t\complete = 0 : e = FmtEta(*t\eta) : EndIf
   If *t\seedSecs > 0 : sd = FmtEta(*t\seedSecs) : EndIf
-  ProcedureReturn *t\name + #LF$ + FmtSize(*t\size) + #LF$ + ProgText(*t\progress) + #LF$ + *t\status + #LF$ + Str(*t\seeds) + #LF$ + Str(*t\peers) + #LF$ + FmtSpeed(*t\downRate) + #LF$ + FmtSpeed(*t\upRate) + #LF$ + e + #LF$ + sd + #LF$ + StrD(*t\ratio / 1000.0, 2) + #LF$ + *t\lbl
+  ProcedureReturn *t\name + #LF$ + FmtSize(*t\size) + #LF$ + ProgText(*t\progress) + #LF$ + *t\status + #LF$ + FmtCount(*t\seeds, *t\seedsTotal) + #LF$ + FmtCount(*t\peers, *t\peersTotal) + #LF$ + FmtSpeed(*t\downRate) + #LF$ + FmtSpeed(*t\upRate) + #LF$ + e + #LF$ + sd + #LF$ + StrD(*t\ratio / 1000.0, 2) + #LF$ + *t\lbl
 EndProcedure
 
 ;------------------------------------------------------------------------------
@@ -368,8 +368,8 @@ Procedure UpdateGeneral()
         Case 4  : v = FmtSize(Tor()\done)
         Case 5  : v = StrD(Tor()\progress, 1) + " %"
         Case 6  : v = Tor()\status
-        Case 7  : v = Str(Tor()\seeds)
-        Case 8  : v = Str(Tor()\peers)
+        Case 7  : v = FmtCount(Tor()\seeds, Tor()\seedsTotal)
+        Case 8  : v = FmtCount(Tor()\peers, Tor()\peersTotal)
         Case 9  : v = StrD(Tor()\ratio / 1000.0, 2)
         Case 10 : v = FmtSize(Tor()\upTotal)
         Case 11 : v = FmtSize(Tor()\downTotal)

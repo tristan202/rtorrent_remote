@@ -209,6 +209,11 @@ Procedure QB_ParseList(raw.s, List t.Torrent())
       t()\ratio     = r * 1000
       t()\seeds     = JQ(*o, "num_seeds")
       t()\peers     = JQ(*o, "num_seeds") + JQ(*o, "num_leechs")
+      t()\seedsTotal = JQ(*o, "num_complete")
+      If t()\seedsTotal < 0 : t()\seedsTotal = 0 : EndIf
+      t()\peersTotal = JQ(*o, "num_incomplete")
+      If t()\peersTotal < 0 : t()\peersTotal = 0 : EndIf
+      t()\peersTotal + t()\seedsTotal             ; forbundne peers inkluderer seeds
       t()\upTotal   = JQ(*o, "uploaded")
       t()\downTotal = JQ(*o, "downloaded")
       cp = JS(*o, "content_path")
